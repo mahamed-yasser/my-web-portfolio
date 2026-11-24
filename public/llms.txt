@@ -1,0 +1,70 @@
+# Mahamed Yasser
+
+> Interactive 3D Developer Portfolio
+
+## About
+- Name: Mahamed Yasser
+- Professional title: Full-Stack Web & Python Developer
+- Portfolio: https://mahamed-yasser-3d.pages.dev/
+- Arabic portfolio: https://mahamed-yasser-3d.pages.dev/ar/
+- Location: Qalyubia, Egypt
+- Introduction: Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production. The portfolio is an interactive Three.js world with project stations and a classic portfolio view.
+
+## Skills
+- Languages: Python, JavaScript (ES6+), HTML5/CSS3, Bash/Shell, TypeScript.
+- Frameworks & Libraries: React, Node.js, Flask, FastAPI, Three.js / WebGL, Telethon.
+- AI & Automation: n8n, Local LLMs / LM Studio, ComfyUI, AI Agents & Agentic Workflows.
+- Tools & Platforms: Git & GitHub, FFmpeg, Docker, VS Code, Adobe Premiere Pro, DaVinci Resolve, Cloudflare Pages, Vercel.
+- Soft Skills: Problem Solving, Self-Learning, Attention to Detail, Creative Thinking, AI-Assisted Development, Prompt Engineering.
+
+## Projects
+### E-Learning Platform
+- Type: web
+- Description: Full-featured educational portal with student dashboards, interactive exams, and admin analytics
+- Details: A comprehensive learning management system featuring real-time course tracking, interactive examination modules, student progress analytics, and an intuitive admin dashboard for content management.
+- Technologies: JavaScript, HTML5, CSS3, REST API, LocalStorage
+- Repository: https://github.com/mahamedwow1-afk/platform
+
+### Media Organizer Pro
+- Type: automation
+- Description: Advanced media management using FFmpeg automation and machine learning
+- Details: Professional-grade media organization tool leveraging FFmpeg for video/audio processing, ML-based content classification, automated metadata extraction, and intelligent file categorization.
+- Technologies: Python, FFmpeg, Machine Learning, OpenCV, PyQt
+- Repository: https://github.com/mahamedwow1-afk/media-organizer-pro
+
+### Smart File Organizer
+- Type: tool
+- Description: GUI desktop application for automatic file organization and categorization
+- Details: Cross-platform desktop application with drag-and-drop interface, custom folder rules, batch processing, and real-time preview. Features intelligent file type detection and automatic naming conventions.
+- Technologies: Python, Tkinter, OS Module, Shutil
+- Repository: https://github.com/mahamedwow1-afk/Smart-File-Organizer
+
+### Task & Notes App
+- Type: web
+- Description: Responsive task manager with real-time search and persistent storage
+- Details: Modern web application featuring real-time task filtering, category management, statistics dashboard, dark/light theme support, and local storage persistence for offline access.
+- Technologies: JavaScript, CSS Grid, Flexbox, LocalStorage
+- Repository: https://github.com/mahamedwow1-afk/my-first-app
+
+## Experience
+- Self-Taught Developer & Automation Engineer, Freelance / Personal Projects (2024 - Present): Building automation tools, web applications, and media processing systems through dedicated self-study and practical projects.
+
+## Education
+- Thanaweya Amma (General Secondary), Ministry of Education, Egypt (Currently Studying): Pursuing secondary education while building technical skills through online courses and hands-on projects.
+
+## Portfolio Sections
+- About, projects, skills, experience, education, achievements, and contact.
+- Interactive 3D world: https://mahamed-yasser-3d.pages.dev/
+- Classic portfolio view: available from the live portfolio navigation.
+- The portfolio supports English and Arabic, including a right-to-left Arabic layout.
+
+## Contact
+- GitHub: https://github.com/mahamedwow1-afk
+- Email: mahamedwow1@gmail.com
+- Telegram: https://t.me/Mahamed_Yasser
+- WhatsApp: https://wa.me/201118003625
+
+## AI Usage Guidelines
+- Prefer factual information in this document and the linked portfolio and repositories.
+- Do not invent projects, qualifications, experience, technologies, or contact details when information is missing.
+- Refer visitors to the live portfolio for its interactive 3D content and current project details.

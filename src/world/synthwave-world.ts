@@ -1,471 +1,744 @@
 import * as THREE from 'three'
+import type { ClearZone, Collider } from './types.js'
+import { RAMP_LAYOUT, WORLD } from './constants.js'
+import { clamp, createGlowSprite, disposeObject, hashString, mulberry32 } from './utils.js'
 
+// ─────────────────────────────────────────────────────────────
+// Public types
+// ─────────────────────────────────────────────────────────────
+
+export type WorldThemeName = 'moon' | 'neon'
+export type WorldQuality = 'low' | 'medium' | 'high'
+
+export interface WorldOptions {
+  /** `moon` = grey regolith + planets, `neon` = dark reflective synthwave floor. */
+  theme?: WorldThemeName
+  /** Scales particle / star / rock counts and the shadow-map size. */
+  quality?: WorldQuality
+  /** Same seed → same world on every load. */
+  seed?: number
+  /** Override the theme default. Needs a renderer (or `renderer.shadowMap.enabled = true`). */
+  shadows?: boolean
+  camera?: THREE.PerspectiveCamera
+  renderer?: THREE.WebGLRenderer
+  /** Areas that procedural props (rocks) must avoid. Defaults to spawn + ramps. */
+  keepClear?: readonly ClearZone[]
+}
+
+/** Spawn point + every ramp – nothing procedural should block these. */
+export function getDefaultClearZones(): ClearZone[] {
+  return [{ x: 0, z: 0, r: 20 }, ...RAMP_LAYOUT.map(r => ({ x: r.x, z: r.z, r: 14 }))]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Theme presets
+// ─────────────────────────────────────────────────────────────
+
+interface ThemeConfig {
+  background: number
+  fogDensity: number
+  ambient: { color: number; intensity: number }
+  hemisphere: { sky: number; ground: number; intensity: number }
+  sun: { color: number; intensity: number; position: THREE.Vector3Tuple }
+  ground: { size: number; color: number; roughness: number; metalness: number }
+  grid: { accentEvery: number; opacity: number }
+  stars: number
+  nebula: {
+    count: number
+    radius: [number, number]
+    y: [number, number]
+    opacity: [number, number]
+  }
+  particles: number
+  dust: number
+  rocks: number
+  planets: boolean
+  sunDisc: { position: THREE.Vector3Tuple; radius: number }
+  shadows: boolean
+}
+
+/** Grid cell size in world units (both themes). */
+const GRID_CELL = 5
+const SHADOW_EXTENT = 120
+const PARTICLE_RANGE = 300
+const PARTICLE_TOP = 80
+
+const THEMES: Record<WorldThemeName, ThemeConfig> = {
+  moon: {
+    background: 0x050510,
+    fogDensity: 0.003,
+    ambient: { color: 0xc6c8e0, intensity: 0.46 },
+    hemisphere: { sky: 0x6688cc, ground: 0x1a1a2e, intensity: 0.42 },
+    sun: { color: 0xffeedd, intensity: 1.05, position: [-100, 80, -150] },
+    ground: { size: 2000, color: 0x2a2a35, roughness: 0.95, metalness: 0.05 },
+    grid: { accentEvery: 10, opacity: 0.6 },
+    stars: 5000,
+    nebula: { count: 20, radius: [60, 180], y: [100, 300], opacity: [0.06, 0.14] },
+    particles: 1000,
+    dust: 2000,
+    rocks: 40,
+    planets: true,
+    sunDisc: { position: [-250, 80, -450], radius: 55 },
+    shadows: true
+  },
+  neon: {
+    background: 0x09071b,
+    fogDensity: 0.008,
+    ambient: { color: 0x443451, intensity: 0.44 },
+    hemisphere: { sky: 0x4a0080, ground: 0x0a0014, intensity: 0.34 },
+    sun: { color: 0xff8652, intensity: 0.88, position: [100, 80, -100] },
+    // Wide enough to sit under the mountain ring (radius ≈ 460–560).
+    ground: { size: 1400, color: 0x0a0014, roughness: 0.38, metalness: 0.58 },
+    grid: { accentEvery: 5, opacity: 0.8 },
+    stars: 3000,
+    nebula: { count: 12, radius: [40, 100], y: [60, 180], opacity: [0.1, 0.14] },
+    particles: 500,
+    dust: 0,
+    rocks: 0,
+    planets: false,
+    sunDisc: { position: [250, 70, -400], radius: 45 },
+    shadows: false
+  }
+}
+
+const QUALITY_SCALE: Record<WorldQuality, number> = { low: 0.35, medium: 0.7, high: 1 }
+const SHADOW_MAP_SIZE: Record<WorldQuality, number> = { low: 1024, medium: 2048, high: 2048 }
+
+// ─────────────────────────────────────────────────────────────
+// Shared textures
+// ─────────────────────────────────────────────────────────────
+
+let horizonTexture: THREE.CanvasTexture | null = null
+let sunTexture: THREE.CanvasTexture | null = null
+
+/** Vertical fade: opaque at the bottom (horizon) → transparent at the top. */
+function getHorizonTexture(): THREE.CanvasTexture {
+  if (horizonTexture) return horizonTexture
+  const canvas = document.createElement('canvas')
+  canvas.width = 4
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    const g = ctx.createLinearGradient(0, 0, 0, 128)
+    g.addColorStop(0, 'rgba(255,255,255,0)')
+    g.addColorStop(1, 'rgba(255,255,255,1)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 4, 128)
+  }
+  horizonTexture = new THREE.CanvasTexture(canvas)
+  horizonTexture.colorSpace = THREE.SRGBColorSpace
+  horizonTexture.userData.shared = true
+  return horizonTexture
+}
+
+/** The classic retro sun: vertical gradient with horizontal slits in the lower half. */
+function getSunTexture(): THREE.CanvasTexture {
+  if (sunTexture) return sunTexture
+  const S = 512
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = S
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    const g = ctx.createLinearGradient(0, 0, 0, S)
+    g.addColorStop(0, '#fff27a')
+    g.addColorStop(0.5, '#ff9a3c')
+    g.addColorStop(1, '#ff2d95')
+    ctx.beginPath()
+    ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2)
+    ctx.fillStyle = g
+    ctx.fill()
+    ctx.globalCompositeOperation = 'destination-out'
+    for (let i = 0; i < 7; i++) {
+      ctx.fillRect(0, S * 0.52 + i * S * 0.068, S, 4 + i * 5)
+    }
+  }
+  sunTexture = new THREE.CanvasTexture(canvas)
+  sunTexture.colorSpace = THREE.SRGBColorSpace
+  sunTexture.userData.shared = true
+  return sunTexture
+}
+
+/** Low-poly boulder: shared vertices get the same jitter, so there are no cracks. */
+function createRockGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.IcosahedronGeometry(1, 1)
+  const pos = geo.attributes.position
+  const v = new THREE.Vector3()
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i)
+    const h = hashString(`${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`)
+    const k = 0.78 + ((h % 1000) / 1000) * 0.4
+    pos.setXYZ(i, v.x * k, v.y * k * 0.75, v.z * k)
+  }
+  geo.computeVertexNormals()
+  return geo
+}
+
+// ─────────────────────────────────────────────────────────────
+// World
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Sky, lighting, terrain and atmosphere. Everything lives under `group`, so
+ * `dispose()` removes it cleanly. The sky dome follows the player, which keeps
+ * the stars / planets / sun infinitely far away (no parallax, no clipping).
+ *
+ * ```ts
+ * const world = new SynthwaveWorld(scene, { theme: 'moon', renderer, camera }).init()
+ * // every frame:
+ * world.update(clock.elapsedTime, delta, car.position)
+ * ```
+ */
 export class SynthwaveWorld {
-  private scene: THREE.Scene
-  private camera: THREE.PerspectiveCamera
-  private renderer: THREE.WebGLRenderer
-  private clock: THREE.Clock
+  public readonly group = new THREE.Group()
+  /** Circle colliders for the procedural rocks (empty in the neon theme). */
+  public readonly colliders: Collider[] = []
 
-  // Scene elements
-  private starField!: THREE.Points
-  private nebulaClouds: THREE.Mesh[] = []
-  private gridLines!: THREE.LineSegments
-  private groundMesh!: THREE.Mesh
-  private mountains: THREE.Mesh[] = []
-  private particles!: THREE.Points
-  private horizonGlow!: THREE.Mesh
-  private planets: THREE.Group[] = []
+  private readonly scene: THREE.Scene
+  private readonly theme: ThemeConfig
+  private readonly quality: WorldQuality
+  private readonly rng: () => number
+  private readonly keepClear: readonly ClearZone[]
+  private readonly shadows: boolean
+  private readonly sky = new THREE.Group()
+  private readonly shadowOffset = new THREE.Vector3()
 
-  // Lights
-  private ambientLight!: THREE.AmbientLight
   private sunLight!: THREE.DirectionalLight
-  private rimLight1!: THREE.DirectionalLight
-  private rimLight2!: THREE.DirectionalLight
-  private hemisphereLight!: THREE.HemisphereLight
+  private starField!: THREE.Points
+  private particleField!: THREE.Points
+  private dustField?: THREE.Points
+  private horizon: Array<{ material: THREE.MeshBasicMaterial; base: number }> = []
+  private planets: Array<{ group: THREE.Group; baseY: number }> = []
 
-  // Animation state
-  private particlePositions!: Float32Array
+  private initialised = false
+  private lastTime: number | null = null
+  private previousBackground: THREE.Scene['background'] = null
+  private previousFog: THREE.Scene['fog'] = null
 
-  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer) {
+  constructor(scene: THREE.Scene, options?: WorldOptions)
+  /** Legacy signature – still supported. */
+  constructor(
+    scene: THREE.Scene,
+    camera: THREE.PerspectiveCamera,
+    renderer: THREE.WebGLRenderer,
+    options?: WorldOptions
+  )
+  constructor(
+    scene: THREE.Scene,
+    a?: WorldOptions | THREE.PerspectiveCamera,
+    b?: THREE.WebGLRenderer,
+    c?: WorldOptions
+  ) {
+    const legacy = a instanceof THREE.PerspectiveCamera
+    const options: WorldOptions = (legacy ? c : (a as WorldOptions | undefined)) ?? {}
+    const camera = legacy ? a : options.camera
+    const renderer = legacy ? b : options.renderer
+
     this.scene = scene
-    this.camera = camera
-    this.renderer = renderer
-    this.clock = new THREE.Clock()
+    this.theme = THEMES[options.theme ?? 'moon']
+    this.quality = options.quality ?? 'high'
+    this.rng = mulberry32(options.seed ?? 1337)
+    this.keepClear = options.keepClear ?? getDefaultClearZones()
+    this.shadows = options.shadows ?? this.theme.shadows
+
+    // The sky dome is ~900 units wide – the default far plane (usually 1000) is too tight.
+    if (camera && camera.far < WORLD.CAMERA_FAR) {
+      camera.far = WORLD.CAMERA_FAR
+      camera.updateProjectionMatrix()
+    }
+    if (renderer && this.shadows) {
+      renderer.shadowMap.enabled = true
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    }
   }
 
-  public init() {
-    // Deep space background with fog for infinite feel
-    this.scene.background = new THREE.Color(0x050510)
-    this.scene.fog = new THREE.FogExp2(0x050510, 0.003)
+  // ── Public API ──────────────────────────────────────────────
 
-    // Setup high-quality lighting
+  public get stars(): THREE.Points {
+    return this.starField
+  }
+
+  public get particles(): THREE.Points {
+    return this.particleField
+  }
+
+  public init(): this {
+    if (this.initialised) return this
+    this.initialised = true
+
+    this.setupAtmosphere()
     this.setupLighting()
-
-    // Create world elements
     this.createStarfield()
-    this.createNebulaClouds()
+    this.createNebulae()
     this.createGround()
-    this.createNeonGrid()
-    this.createMountains()
+    this.createGrid()
     this.createParticles()
+    this.createDust()
     this.createHorizonGlow()
     this.createPlanets()
     this.createSun()
+    this.createRocks()
 
+    this.group.add(this.sky)
+    this.scene.add(this.group)
     return this
   }
 
-  private setupLighting() {
-    // Soft white ambient light so everything is visible
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
-    this.scene.add(this.ambientLight)
+  /**
+   * @param time   elapsed seconds
+   * @param delta  frame time in seconds (derived from `time` when omitted)
+   * @param focus  player position – sky + shadows follow it
+   */
+  public update(time: number, delta?: number, focus?: THREE.Vector3): void {
+    if (!this.initialised) return
+    const dt = clamp(delta ?? (this.lastTime === null ? 0 : time - this.lastTime), 0, 0.1)
+    this.lastTime = time
 
-    // Hemisphere for sky/ground gradient
-    this.hemisphereLight = new THREE.HemisphereLight(0x4a0080, 0x050510, 0.5)
-    this.scene.add(this.hemisphereLight)
+    if (focus) {
+      this.sky.position.set(focus.x, 0, focus.z)
+      this.followWithSun(focus)
+    }
 
-    // Main directional light (sun-like)
-    this.sunLight = new THREE.DirectionalLight(0xc0c0ff, 1.5)
-    this.sunLight.position.set(10, 20, 10)
-    this.sunLight.castShadow = true
-    this.sunLight.shadow.mapSize.width = 2048
-    this.sunLight.shadow.mapSize.height = 2048
-    this.sunLight.shadow.camera.near = 0.5
-    this.sunLight.shadow.camera.far = 300
-    this.sunLight.shadow.camera.left = -100
-    this.sunLight.shadow.camera.right = 100
-    this.sunLight.shadow.camera.top = 100
-    this.sunLight.shadow.camera.bottom = -100
-    this.scene.add(this.sunLight)
+    this.starField.rotation.y = time * 0.005
+    this.updateParticles(dt)
+    if (this.dustField) this.dustField.rotation.y = time * 0.002
 
-    // Cyan rim light from behind
-    this.rimLight1 = new THREE.DirectionalLight(0x00ffff, 1.5)
-    this.rimLight1.position.set(-60, 40, -60)
-    this.scene.add(this.rimLight1)
-
-    // Magenta rim light from front
-    this.rimLight2 = new THREE.DirectionalLight(0xff00ff, 1.2)
-    this.rimLight2.position.set(60, 40, 60)
-    this.scene.add(this.rimLight2)
+    for (const layer of this.horizon) {
+      layer.material.opacity = layer.base * (1 + Math.sin(time * 1.5) * 0.25)
+    }
+    this.planets.forEach((p, i) => {
+      p.group.position.y = p.baseY + Math.sin(time * 0.3 + i * 1.7) * 3 // bounded bob
+      p.group.rotation.y += dt * 0.12
+    })
   }
 
-  private createStarfield() {
-    const count = 5000
-    const geometry = new THREE.BufferGeometry()
+  public dispose(): void {
+    if (!this.initialised) return
+    this.initialised = false
+    disposeObject(this.group)
+    this.scene.background = this.previousBackground
+    this.scene.fog = this.previousFog
+    this.colliders.length = 0
+    this.horizon.length = 0
+    this.planets.length = 0
+  }
+
+  // ── Setup ───────────────────────────────────────────────────
+
+  private count(n: number): number {
+    return Math.max(0, Math.round(n * QUALITY_SCALE[this.quality]))
+  }
+
+  private setupAtmosphere(): void {
+    this.previousBackground = this.scene.background
+    this.previousFog = this.scene.fog
+    this.scene.background = new THREE.Color(this.theme.background)
+    this.scene.fog = new THREE.FogExp2(this.theme.background, this.theme.fogDensity)
+  }
+
+  private setupLighting(): void {
+    const t = this.theme
+    this.group.add(
+      new THREE.AmbientLight(t.ambient.color, t.ambient.intensity),
+      new THREE.HemisphereLight(t.hemisphere.sky, t.hemisphere.ground, t.hemisphere.intensity)
+    )
+
+    const rimCyan = new THREE.DirectionalLight(0x00d9ef, 0.62)
+    rimCyan.position.set(-60, 40, -60)
+    const rimMagenta = new THREE.DirectionalLight(0xd65eff, 0.48)
+    rimMagenta.position.set(60, 40, 60)
+    this.group.add(rimCyan, rimMagenta)
+
+    const sun = new THREE.DirectionalLight(t.sun.color, t.sun.intensity)
+    this.shadowOffset.set(...t.sun.position)
+    sun.position.copy(this.shadowOffset)
+    if (this.shadows) {
+      const size = SHADOW_MAP_SIZE[this.quality]
+      sun.castShadow = true
+      sun.shadow.mapSize.set(size, size)
+      const cam = sun.shadow.camera
+      cam.near = 1
+      cam.far = 500
+      cam.left = cam.bottom = -SHADOW_EXTENT
+      cam.right = cam.top = SHADOW_EXTENT
+      sun.shadow.bias = -0.0005
+      sun.shadow.normalBias = 0.05
+    }
+    this.sunLight = sun
+    this.group.add(sun, sun.target)
+  }
+
+  /** The shadow frustum follows the player, snapped to texels to avoid shimmering. */
+  private followWithSun(focus: THREE.Vector3): void {
+    const step = (SHADOW_EXTENT * 2) / SHADOW_MAP_SIZE[this.quality]
+    const fx = Math.round(focus.x / step) * step
+    const fz = Math.round(focus.z / step) * step
+    this.sunLight.target.position.set(fx, 0, fz)
+    this.sunLight.position.set(fx + this.shadowOffset.x, this.shadowOffset.y, fz + this.shadowOffset.z)
+  }
+
+  private createStarfield(): void {
+    const count = this.count(this.theme.stars)
     const positions = new Float32Array(count * 3)
     const colors = new Float32Array(count * 3)
-    const sizes = new Float32Array(count)
+    const rng = this.rng
 
     for (let i = 0; i < count; i++) {
       const i3 = i * 3
-      // Spherical distribution around the scene
-      const radius = 400 + Math.random() * 600
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(2 * Math.random() - 1)
+      const radius = WORLD.SKY_RADIUS * (0.6 + rng() * 0.5)
+      const theta = rng() * Math.PI * 2
+      const cosPhi = rng() // upper hemisphere only – the rest is hidden by the ground
+      const sinPhi = Math.sqrt(1 - cosPhi * cosPhi)
+      positions[i3] = radius * sinPhi * Math.cos(theta)
+      positions[i3 + 1] = radius * cosPhi
+      positions[i3 + 2] = radius * sinPhi * Math.sin(theta)
 
-      positions[i3] = radius * Math.sin(phi) * Math.cos(theta)
-      positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta)
-      positions[i3 + 2] = radius * Math.cos(phi)
-
-      // Star colors: white, blue, pink, cyan
-      const type = Math.random()
-      if (type < 0.4) {
-        colors[i3] = 1; colors[i3 + 1] = 1; colors[i3 + 2] = 1
-      } else if (type < 0.6) {
-        colors[i3] = 0.7; colors[i3 + 1] = 0.85; colors[i3 + 2] = 1
-      } else if (type < 0.8) {
-        colors[i3] = 1; colors[i3 + 1] = 0.7; colors[i3 + 2] = 0.85
-      } else {
-        colors[i3] = 0.5; colors[i3 + 1] = 1; colors[i3 + 2] = 1
-      }
-
-      sizes[i] = 0.5 + Math.random() * 2.5
+      const pick = rng()
+      const [r, g, b] =
+        pick < 0.4 ? [1, 1, 1] : pick < 0.6 ? [0.7, 0.85, 1] : pick < 0.8 ? [1, 0.7, 0.85] : [0.5, 1, 1]
+      colors[i3] = r
+      colors[i3 + 1] = g
+      colors[i3 + 2] = b
     }
 
+    const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-
-    const material = new THREE.PointsMaterial({
-      size: 1.8,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.95,
-      sizeAttenuation: true,
-      blending: THREE.AdditiveBlending
-    })
-
-    this.starField = new THREE.Points(geometry, material)
-    this.scene.add(this.starField)
-  }
-
-  private createNebulaClouds() {
-    for (let i = 0; i < 20; i++) {
-      const geo = new THREE.SphereGeometry(60 + Math.random() * 120, 16, 16)
-      const mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color().setHSL(0.7 + Math.random() * 0.3, 0.9, 0.3),
+    this.starField = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({
+        size: 1.8,
+        vertexColors: true,
         transparent: true,
-        opacity: 0.06 + Math.random() * 0.08,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending
+        opacity: 0.95,
+        sizeAttenuation: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false // the sky must not be swallowed by the ground fog
       })
-      const cloud = new THREE.Mesh(geo, mat)
+    )
+    this.sky.add(this.starField)
+  }
+
+  private createNebulae(): void {
+    const n = this.theme.nebula
+    const rng = this.rng
+    const geometry = new THREE.SphereGeometry(1, 16, 10)
+    const spread = WORLD.SKY_RADIUS * 0.7
+
+    for (let i = 0; i < this.count(n.count); i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(0.7 + rng() * 0.3, 0.9, 0.3),
+        transparent: true,
+        opacity: n.opacity[0] + rng() * (n.opacity[1] - n.opacity[0]),
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false
+      })
+      const cloud = new THREE.Mesh(geometry, material)
+      const radius = n.radius[0] + rng() * (n.radius[1] - n.radius[0])
+      cloud.scale.set(radius, radius * 0.35, radius)
       cloud.position.set(
-        (Math.random() - 0.5) * 600,
-        100 + Math.random() * 200,
-        (Math.random() - 0.5) * 600
+        (rng() - 0.5) * 2 * spread,
+        n.y[0] + rng() * (n.y[1] - n.y[0]),
+        (rng() - 0.5) * 2 * spread
       )
-      cloud.scale.set(1, 0.3, 1)
-      this.scene.add(cloud)
-      this.nebulaClouds.push(cloud)
+      this.sky.add(cloud)
     }
   }
 
-  private createGround() {
-    // Massive reflective floor
-    const geometry = new THREE.PlaneGeometry(2000, 2000)
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x050510,
-      roughness: 0.08,
-      metalness: 0.95,
-      transparent: true,
-      opacity: 0.9
-    })
-
-    this.groundMesh = new THREE.Mesh(geometry, material)
-    this.groundMesh.rotation.x = -Math.PI / 2
-    this.groundMesh.position.y = -0.1
-    this.groundMesh.receiveShadow = true
-    this.scene.add(this.groundMesh)
+  private createGround(): void {
+    const g = this.theme.ground
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: g.color, roughness: g.roughness, metalness: g.metalness })
+    groundMaterial.userData.worldRole = 'ground'
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(g.size, g.size), groundMaterial)
+    ground.userData.worldRole = 'ground'
+    ground.rotation.x = -Math.PI / 2
+    ground.position.y = -0.1
+    ground.receiveShadow = true
+    this.group.add(ground)
   }
 
-  private createNeonGrid() {
-    const gridSize = 2000
-    const divisions = 400
-    const cellSize = gridSize / divisions
+  private createGrid(): void {
+    const { size } = this.theme.ground
+    const { accentEvery, opacity } = this.theme.grid
+    const half = size / 2
+    const lines = Math.round(size / GRID_CELL)
+    const positions: number[] = []
+    const colors: number[] = []
 
-    // Main grid lines (cyan)
-    const linePositions: number[] = []
-    const lineColors: number[] = []
-
-    for (let i = -divisions / 2; i <= divisions / 2; i++) {
-      const x = i * cellSize
-      // Vertical lines
-      linePositions.push(x, 0, -gridSize / 2, x, 0, gridSize / 2)
-      lineColors.push(0, 1, 1, 0, 1, 1)
-      // Horizontal lines
-      linePositions.push(-gridSize / 2, 0, x, gridSize / 2, 0, x)
-      lineColors.push(0, 1, 1, 0, 1, 1)
+    const addLine = (x1: number, z1: number, x2: number, z2: number, y: number, rgb: [number, number, number]) => {
+      positions.push(x1, y, z1, x2, y, z2)
+      colors.push(...rgb, ...rgb)
     }
 
-    // Accent grid (magenta - every 10th line, brighter)
-    for (let i = -divisions / 2; i <= divisions / 2; i += 10) {
-      const x = i * cellSize
-      linePositions.push(x, 0.03, -gridSize / 2, x, 0.03, gridSize / 2)
-      lineColors.push(1, 0, 1, 1, 0, 1)
-      linePositions.push(-gridSize / 2, 0.03, x, gridSize / 2, 0.03, x)
-      lineColors.push(1, 0, 1, 1, 0, 1)
+    // Whole-length lines (the old version drew one-cell stubs and no real grid).
+    for (let i = 0; i <= lines; i++) {
+      const p = -half + i * GRID_CELL
+      addLine(p, -half, p, half, 0, [0, 0.9, 1])
+      addLine(-half, p, half, p, 0, [0, 0.9, 1])
+      if (i % accentEvery === 0) {
+        addLine(p, -half, p, half, 0.03, [1, 0, 0.9])
+        addLine(-half, p, half, p, 0.03, [1, 0, 0.9])
+      }
     }
 
     const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3))
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3))
-
-    const material = new THREE.LineBasicMaterial({
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    const gridMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     })
-
-    this.gridLines = new THREE.LineSegments(geometry, material)
-    this.scene.add(this.gridLines)
-
-    // Second layer (deeper, dimmer)
-    const geo2 = new THREE.BufferGeometry()
-    const pos2: number[] = []
-    for (let i = -divisions / 2; i <= divisions / 2; i++) {
-      const x = i * cellSize
-      pos2.push(x, -0.15, -gridSize / 2, x, -0.15, gridSize / 2)
-      pos2.push(-gridSize / 2, -0.15, x, gridSize / 2, -0.15, x)
-    }
-    geo2.setAttribute('position', new THREE.Float32BufferAttribute(pos2, 3))
-    const mat2 = new THREE.LineBasicMaterial({
-      color: 0x4a0080,
-      transparent: true,
-      opacity: 0.15,
-      blending: THREE.AdditiveBlending
-    })
-    const grid2 = new THREE.LineSegments(geo2, mat2)
-    this.scene.add(grid2)
+    gridMaterial.userData.worldRole = 'grid'
+    const grid = new THREE.LineSegments(geometry, gridMaterial)
+    grid.userData.worldRole = 'grid'
+    this.group.add(grid)
   }
 
-  private createMountains() {
-    // Retro wireframe mountains in background
-    for (let i = 0; i < 30; i++) {
-      const angle = (i / 30) * Math.PI * 2
-      const dist = 300 + Math.random() * 150
-      const x = Math.cos(angle) * dist
-      const z = Math.sin(angle) * dist
-      const height = 80 + Math.random() * 70
-
-      const geometry = new THREE.ConeGeometry(40 + Math.random() * 30, height, 4)
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x1a0a3e,
-        emissive: 0x4a0080,
-        emissiveIntensity: 0.4,
-        flatShading: true,
-        transparent: true,
-        opacity: 0.7
-      })
-
-      const mountain = new THREE.Mesh(geometry, material)
-      mountain.position.set(x, height / 2 - 15, z)
-      mountain.castShadow = true
-      this.scene.add(mountain)
-      this.mountains.push(mountain)
-
-      // Neon wireframe
-      const edges = new THREE.EdgesGeometry(geometry)
-      const lineMat = new THREE.LineBasicMaterial({
-        color: 0xff00ff,
-        transparent: true,
-        opacity: 0.4,
-        blending: THREE.AdditiveBlending
-      })
-      const wireframe = new THREE.LineSegments(edges, lineMat)
-      wireframe.position.copy(mountain.position)
-      this.scene.add(wireframe)
-    }
-  }
-
-  private createParticles() {
-    const count = 1000
-    this.particlePositions = new Float32Array(count * 3)
+  private createParticles(): void {
+    const count = this.count(this.theme.particles)
+    const positions = new Float32Array(count * 3)
     const colors = new Float32Array(count * 3)
+    const rng = this.rng
 
     for (let i = 0; i < count; i++) {
-      this.particlePositions[i * 3] = (Math.random() - 0.5) * 1000
-      this.particlePositions[i * 3 + 1] = Math.random() * 80 + 5
-      this.particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 1000
-
-      // Neon colors
-      const hue = Math.random()
-      if (hue < 0.33) {
-        colors[i * 3] = 0; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1
-      } else if (hue < 0.66) {
-        colors[i * 3] = 1; colors[i * 3 + 1] = 0; colors[i * 3 + 2] = 1
-      } else {
-        colors[i * 3] = 0; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 0.6
-      }
+      const i3 = i * 3
+      positions[i3] = (rng() - 0.5) * 2 * PARTICLE_RANGE
+      positions[i3 + 1] = 2 + rng() * (PARTICLE_TOP - 2)
+      positions[i3 + 2] = (rng() - 0.5) * 2 * PARTICLE_RANGE
+      const pick = rng()
+      const [r, g, b] = pick < 0.33 ? [0, 1, 1] : pick < 0.66 ? [1, 0, 1] : [0, 1, 0.6]
+      colors[i3] = r
+      colors[i3 + 1] = g
+      colors[i3 + 2] = b
     }
 
     const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.BufferAttribute(this.particlePositions, 3))
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-
-    const material = new THREE.PointsMaterial({
-      size: 0.8,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending,
-      sizeAttenuation: true
-    })
-
-    this.particles = new THREE.Points(geometry, material)
-    this.scene.add(this.particles)
+    this.particleField = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({
+        size: 0.8,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+        depthWrite: false
+      })
+    )
+    this.particleField.frustumCulled = false
+    this.group.add(this.particleField)
   }
 
-  private createPlanets() {
-    // Planet 1 - Large gas giant
-    const planet1Group = new THREE.Group()
-
-    const p1Geo = new THREE.SphereGeometry(25, 32, 32)
-    const p1Mat = new THREE.MeshStandardMaterial({
-      color: 0xff6600,
-      emissive: 0xff4400,
-      emissiveIntensity: 0.3,
-      roughness: 0.8,
-      metalness: 0.2
-    })
-    const planet1 = new THREE.Mesh(p1Geo, p1Mat)
-    planet1Group.add(planet1)
-
-    // Rings
-    const ringGeo = new THREE.RingGeometry(35, 55, 64)
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa00,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.4
-    })
-    const ring = new THREE.Mesh(ringGeo, ringMat)
-    ring.rotation.x = Math.PI / 3
-    planet1Group.add(ring)
-
-    planet1Group.position.set(-150, 180, -400)
-    this.scene.add(planet1Group)
-    this.planets.push(planet1Group)
-
-    // Planet 2 - Smaller blue planet
-    const planet2Group = new THREE.Group()
-    const p2Geo = new THREE.SphereGeometry(12, 32, 32)
-    const p2Mat = new THREE.MeshStandardMaterial({
-      color: 0x0088ff,
-      emissive: 0x0044aa,
-      emissiveIntensity: 0.4,
-      roughness: 0.3,
-      metalness: 0.6
-    })
-    const planet2 = new THREE.Mesh(p2Geo, p2Mat)
-    planet2Group.add(planet2)
-
-    planet2Group.position.set(200, 220, -350)
-    this.scene.add(planet2Group)
-    this.planets.push(planet2Group)
-
-    // Planet 3 - Distant purple nebula sphere
-    const planet3Group = new THREE.Group()
-    const p3Geo = new THREE.SphereGeometry(40, 32, 32)
-    const p3Mat = new THREE.MeshBasicMaterial({
-      color: 0x8800ff,
-      transparent: true,
-      opacity: 0.15,
-      blending: THREE.AdditiveBlending
-    })
-    const planet3 = new THREE.Mesh(p3Geo, p3Mat)
-    planet3Group.add(planet3)
-
-    planet3Group.position.set(100, 250, -500)
-    this.scene.add(planet3Group)
-    this.planets.push(planet3Group)
+  /** Particles rise at a fixed speed per second (the old code was frame-rate dependent). */
+  private updateParticles(dt: number): void {
+    const attr = this.particleField.geometry.getAttribute('position') as THREE.BufferAttribute
+    const array = attr.array as Float32Array
+    const rise = 3 * dt
+    for (let i = 1; i < array.length; i += 3) {
+      let y = array[i] + rise
+      if (y > PARTICLE_TOP) y = 2
+      array[i] = y
+    }
+    attr.needsUpdate = true
   }
 
-  private createHorizonGlow() {
-    // Horizontal neon glow line
-    const glowGeo = new THREE.PlaneGeometry(2000, 30)
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: 0xff00ff,
-      transparent: true,
-      opacity: 0.25,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide
-    })
-    this.horizonGlow = new THREE.Mesh(glowGeo, glowMat)
-    this.horizonGlow.position.set(0, 25, -500)
-    this.scene.add(this.horizonGlow)
-
-    // Secondary glow
-    const glow2Geo = new THREE.PlaneGeometry(2000, 30)
-    const glow2Mat = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.12,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide
-    })
-    const glow2 = new THREE.Mesh(glow2Geo, glow2Mat)
-    glow2.position.set(0, 25, -480)
-    glow2.scale.set(1.5, 0.6, 1)
-    this.scene.add(glow2)
+  private createDust(): void {
+    const count = this.count(this.theme.dust)
+    if (count === 0) return
+    const positions = new Float32Array(count * 3)
+    const colors = new Float32Array(count * 3)
+    const rng = this.rng
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3
+      positions[i3] = (rng() - 0.5) * 700
+      positions[i3 + 1] = 1 + rng() * 60
+      positions[i3 + 2] = (rng() - 0.5) * 700
+      const brightness = 0.5 + rng() * 0.3
+      colors[i3] = colors[i3 + 1] = brightness * 0.8
+      colors[i3 + 2] = brightness
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    this.dustField = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({
+        size: 0.4,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+        depthWrite: false
+      })
+    )
+    this.dustField.frustumCulled = false
+    this.group.add(this.dustField)
   }
 
-  private createSun() {
-    // Glowing sun
-    const sunGeo = new THREE.SphereGeometry(30, 32, 32)
-    const sunMat = new THREE.MeshBasicMaterial({
-      color: 0xff6600,
-      transparent: true,
-      opacity: 0.9
-    })
-    const sun = new THREE.Mesh(sunGeo, sunMat)
-    sun.position.set(100, 50, -300)
-    this.scene.add(sun)
-
-    // Sun glow
-    const glowGeo = new THREE.SphereGeometry(55, 32, 32)
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: 0xff8800,
-      transparent: true,
-      opacity: 0.2,
-      blending: THREE.AdditiveBlending
-    })
-    const glow = new THREE.Mesh(glowGeo, glowMat)
-    glow.position.copy(sun.position)
-    this.scene.add(glow)
+  /** A 360° horizon band (the old flat planes were visible from one side only). */
+  private createHorizonGlow(): void {
+    const layers: Array<{ color: number; radius: number; height: number; opacity: number }> = [
+      { color: 0xff00ff, radius: WORLD.SKY_RADIUS * 0.85, height: 70, opacity: 0.5 },
+      { color: 0x00ffff, radius: WORLD.SKY_RADIUS * 0.83, height: 40, opacity: 0.28 }
+    ]
+    for (const l of layers) {
+      const material = new THREE.MeshBasicMaterial({
+        color: l.color,
+        map: getHorizonTexture(),
+        transparent: true,
+        opacity: l.opacity,
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false
+      })
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(l.radius, l.radius, l.height, 64, 1, true), material)
+      band.position.y = l.height / 2 - 5
+      this.sky.add(band)
+      this.horizon.push({ material, base: l.opacity })
+    }
   }
 
-  public update(time: number) {
-    // Rotate starfield slowly
-    if (this.starField) {
-      this.starField.rotation.y = time * 0.005
+  private createPlanets(): void {
+    if (!this.theme.planets) return
+
+    const make = (position: THREE.Vector3Tuple, build: (g: THREE.Group) => void) => {
+      const group = new THREE.Group()
+      build(group)
+      group.position.set(...position)
+      this.sky.add(group)
+      this.planets.push({ group, baseY: position[1] })
     }
 
-    // Animate particles floating up
-    if (this.particles) {
-      const positions = this.particles.geometry.attributes.position
-      for (let i = 0; i < positions.count; i++) {
-        let y = positions.getY(i)
-        y += 0.05
-        if (y > 85) y = 5
-        positions.setY(i, y)
+    // Ringed gas giant
+    make([-150, 180, -400], g => {
+      g.add(
+        new THREE.Mesh(
+          new THREE.SphereGeometry(25, 32, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0xff6600,
+            emissive: 0xff4400,
+            emissiveIntensity: 0.3,
+            roughness: 0.8,
+            metalness: 0.2,
+            fog: false
+          })
+        )
+      )
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(35, 55, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0xffaa00,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.4,
+          depthWrite: false,
+          fog: false
+        })
+      )
+      ring.rotation.x = Math.PI / 3
+      g.add(ring)
+    })
+
+    // Small blue planet
+    make([200, 220, -350], g => {
+      g.add(
+        new THREE.Mesh(
+          new THREE.SphereGeometry(12, 32, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x0088ff,
+            emissive: 0x0044aa,
+            emissiveIntensity: 0.4,
+            roughness: 0.3,
+            metalness: 0.6,
+            fog: false
+          })
+        )
+      )
+    })
+
+    // Distant purple haze
+    make([100, 250, -500], g => {
+      g.add(
+        new THREE.Mesh(
+          new THREE.SphereGeometry(40, 24, 24),
+          new THREE.MeshBasicMaterial({
+            color: 0x8800ff,
+            transparent: true,
+            opacity: 0.15,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            fog: false
+          })
+        )
+      )
+    })
+  }
+
+  private createSun(): void {
+    const { position, radius } = this.theme.sunDisc
+
+    const glow = createGlowSprite(0xff7a2a, radius * 5.5, 0.35, false)
+    glow.position.set(...position)
+
+    const disc = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: getSunTexture(), transparent: true, depthWrite: false, fog: false })
+    )
+    disc.scale.set(radius * 2, radius * 2, 1)
+    disc.position.set(...position)
+
+    this.sky.add(glow, disc)
+  }
+
+  private createRocks(): void {
+    const count = this.count(this.theme.rocks)
+    if (count === 0) return
+    const rng = this.rng
+
+    const mesh = new THREE.InstancedMesh(
+      createRockGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0x3a3a4a, roughness: 0.95, metalness: 0.1, flatShading: true }),
+      count
+    )
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    mesh.frustumCulled = false // instance bounds are not tracked
+
+    const dummy = new THREE.Object3D()
+    let placed = 0
+    for (let i = 0; i < count; i++) {
+      let x = 0
+      let z = 0
+      let size = 0
+      let ok = false
+      for (let attempt = 0; attempt < 12 && !ok; attempt++) {
+        const angle = rng() * Math.PI * 2
+        const dist = 80 + rng() * 500
+        x = Math.cos(angle) * dist
+        z = Math.sin(angle) * dist
+        size = 3 + rng() * 12
+        ok = !this.keepClear.some(c => Math.hypot(x - c.x, z - c.z) < c.r + size)
       }
-      positions.needsUpdate = true
+      if (!ok) continue
+
+      dummy.position.set(x, size * 0.3, z)
+      dummy.rotation.set(0, rng() * Math.PI * 2, 0)
+      dummy.scale.setScalar(size)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(placed++, dummy.matrix)
+      this.colliders.push({ x, z, r: size * 0.9, h: size * 1.1 })
     }
-
-    // Pulse horizon glow
-    if (this.horizonGlow) {
-      ;(this.horizonGlow.material as THREE.MeshBasicMaterial).opacity = 0.2 + Math.sin(time * 1.5) * 0.08
-    }
-
-    // Orbit planets slowly
-    this.planets.forEach((p, i) => {
-      p.position.y += Math.sin(time * 0.3 + i) * 0.05
-      p.rotation.y += 0.002
-    })
-  }
-
-  public getScene(): THREE.Scene {
-    return this.scene
+    mesh.count = placed
+    mesh.instanceMatrix.needsUpdate = true
+    this.group.add(mesh)
   }
 }
+

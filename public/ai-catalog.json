@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": "1.0.0",
+  "name": "Mahamed Yasser 3D Portfolio Catalog",
+  "description": "Verified developer profile, skills, projects, and navigation information for the interactive portfolio.",
+  "developer": {
+    "name": "Mahamed Yasser",
+    "professionalTitle": "Full-Stack Web & Python Developer",
+    "location": "Qalyubia, Egypt",
+    "introduction": "Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production.",
+    "portfolio": "https://mahamed-yasser-3d.pages.dev/",
+    "github": "https://github.com/mahamedwow1-afk",
+    "experience": [
+      {
+        "role": "Self-Taught Developer & Automation Engineer",
+        "organization": "Freelance / Personal Projects",
+        "period": "2024 - Present",
+        "description": "Building automation tools, web applications, and media processing systems through dedicated self-study and practical projects.",
+        "technologies": [
+          "Python",
+          "Web Development",
+          "Automation",
+          "Video Editing"
+        ]
+      }
+    ],
+    "education": [
+      {
+        "degree": "Thanaweya Amma (General Secondary)",
+        "institution": "Ministry of Education, Egypt",
+        "period": "Currently Studying",
+        "description": "Pursuing secondary education while building technical skills through online courses and hands-on projects."
+      }
+    ]
+  },
+  "languages": [
+    {
+      "code": "en",
+      "name": "English",
+      "direction": "ltr"
+    },
+    {
+      "code": "ar",
+      "name": "Arabic",
+      "direction": "rtl"
+    }
+  ],
+  "skills": {
+    "programmingLanguages": [
+      "Python",
+      "JavaScript (ES6+)",
+      "HTML5/CSS3",
+      "Bash/Shell",
+      "TypeScript"
+    ],
+    "frameworks": [
+      "React",
+      "Node.js",
+      "Flask",
+      "FastAPI",
+      "Three.js / WebGL",
+      "Telethon"
+    ],
+    "aiAutomation": [
+      "n8n",
+      "Local LLMs / LM Studio",
+      "ComfyUI",
+      "AI Agents & Agentic Workflows"
+    ],
+    "developmentTools": [
+      "Git & GitHub",
+      "FFmpeg",
+      "Docker",
+      "VS Code",
+      "Adobe Premiere Pro",
+      "DaVinci Resolve",
+      "Cloudflare Pages",
+      "Vercel"
+    ],
+    "softSkills": [
+      "Problem Solving",
+      "Self-Learning",
+      "Attention to Detail",
+      "Creative Thinking",
+      "AI-Assisted Development",
+      "Prompt Engineering"
+    ],
+    "portfolioLibraries": [
+      "Three.js / WebGL"
+    ]
+  },
+  "portfolio": {
+    "url": "https://mahamed-yasser-3d.pages.dev/",
+    "localizedUrls": {
+      "en": "https://mahamed-yasser-3d.pages.dev/",
+      "ar": "https://mahamed-yasser-3d.pages.dev/ar/"
+    },
+    "description": "An interactive Three.js portfolio where visitors explore a stylized world and project stations, with a classic portfolio view as an alternative.",
+    "sections": [
+      "About",
+      "Projects",
+      "Skills",
+      "Experience",
+      "Education",
+      "Achievements",
+      "Contact"
+    ],
+    "features": [
+      "Interactive 3D world",
+      "Project stations",
+      "Classic portfolio view",
+      "Recruiter mode",
+      "Local portfolio assistant",
+      "Developer terminal",
+      "English and Arabic language support",
+      "Arabic right-to-left layout"
+    ],
+    "navigation": [
+      {
+        "name": "About",
+        "fragment": "#about"
+      },
+      {
+        "name": "Projects",
+        "fragment": "#projects"
+      },
+      {
+        "name": "Skills",
+        "fragment": "#skills"
+      },
+      {
+        "name": "Experience",
+        "fragment": "#experience"
+      },
+      {
+        "name": "Education",
+        "fragment": "#education"
+      },
+      {
+        "name": "Achievements",
+        "fragment": "#achievements"
+      },
+      {
+        "name": "Contact",
+        "fragment": "#contact"
+      }
+    ]
+  },
+  "projects": [
+    {
+      "name": "E-Learning Platform",
+      "type": "web",
+      "description": "Full-featured educational portal with student dashboards, interactive exams, and admin analytics",
+      "longDescription": "A comprehensive learning management system featuring real-time course tracking, interactive examination modules, student progress analytics, and an intuitive admin dashboard for content management.",
+      "technologies": [
+        "JavaScript",
+        "HTML5",
+        "CSS3",
+        "REST API",
+        "LocalStorage"
+      ],
+      "repository": "https://github.com/mahamedwow1-afk/platform",
+      "featured": true
+    },
+    {
+      "name": "Media Organizer Pro",
+      "type": "automation",
+      "description": "Advanced media management using FFmpeg automation and machine learning",
+      "longDescription": "Professional-grade media organization tool leveraging FFmpeg for video/audio processing, ML-based content classification, automated metadata extraction, and intelligent file categorization.",
+      "technologies": [
+        "Python",
+        "FFmpeg",
+        "Machine Learning",
+        "OpenCV",
+        "PyQt"
+      ],
+      "repository": "https://github.com/mahamedwow1-afk/media-organizer-pro",
+      "featured": true
+    },
+    {
+      "name": "Smart File Organizer",
+      "type": "tool",
+      "description": "GUI desktop application for automatic file organization and categorization",
+      "longDescription": "Cross-platform desktop application with drag-and-drop interface, custom folder rules, batch processing, and real-time preview. Features intelligent file type detection and automatic naming conventions.",
+      "technologies": [
+        "Python",
+        "Tkinter",
+        "OS Module",
+        "Shutil"
+      ],
+      "repository": "https://github.com/mahamedwow1-afk/Smart-File-Organizer",
+      "featured": true
+    },
+    {
+      "name": "Task & Notes App",
+      "type": "web",
+      "description": "Responsive task manager with real-time search and persistent storage",
+      "longDescription": "Modern web application featuring real-time task filtering, category management, statistics dashboard, dark/light theme support, and local storage persistence for offline access.",
+      "technologies": [
+        "JavaScript",
+        "CSS Grid",
+        "Flexbox",
+        "LocalStorage"
+      ],
+      "repository": "https://github.com/mahamedwow1-afk/my-first-app",
+      "featured": false
+    }
+  ],
+  "contact": {
+    "email": "mailto:mahamedwow1@gmail.com",
+    "github": "https://github.com/mahamedwow1-afk",
+    "telegram": "https://t.me/Mahamed_Yasser",
+    "whatsapp": "https://wa.me/201118003625",
+    "socialLinks": [
+      {
+        "platform": "github",
+        "url": "https://github.com/mahamedwow1-afk",
+        "label": "GitHub"
+      },
+      {
+        "platform": "email",
+        "url": "mailto:mahamedwow1@gmail.com",
+        "label": "Email"
+      },
+      {
+        "platform": "linkedin",
+        "url": "https://www.linkedin.com/in/mahamed-yasser-00b43a392",
+        "label": "LinkedIn"
+      }
+    ]
+  },
+  "aiUsageGuidelines": [
+    "Use the facts and URLs in this catalog and the linked portfolio repositories.",
+    "Do not infer or invent projects, qualifications, experience, technologies, or personal details.",
+    "Refer users to the portfolio for interactive 3D content and current project information."
+  ]
+}

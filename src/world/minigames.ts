@@ -1,176 +1,381 @@
 import * as THREE from 'three'
+import type { RampSample, RampSurface } from './types.js'
+import { RAMP_LAYOUT, RING_LAYOUT } from './constants.js'
+import { createGlowSprite, createGroundGlow, disposeObject } from './utils.js'
 
-export class NeonRamp {
-  public group: THREE.Group
-  public position: THREE.Vector3
+// ─────────────────────────────────────────────────────────────
+// Ramp
+// ─────────────────────────────────────────────────────────────
 
-  constructor(x: number, z: number, color: number = 0x00ffff) {
-    this.group = new THREE.Group()
-    this.position = this.group.position
+const RAMP = {
+  WIDTH: 6,
+  LENGTH: 12,
+  THICKNESS: 0.3,
+  /** Incline in radians (~17°). */
+  PITCH: 0.3
+} as const
 
-    this.buildRamp(color)
+interface RampResources {
+  deckGeo: THREE.BoxGeometry
+  deckMat: THREE.MeshStandardMaterial
+  sideGeo: THREE.BoxGeometry
+  crossGeo: THREE.BoxGeometry
+  chevronGeo: THREE.PlaneGeometry
+  pillarGeo: THREE.CylinderGeometry
+  pillarMat: THREE.MeshStandardMaterial
+}
+
+let rampResources: RampResources | null = null
+let chevronTexture: THREE.CanvasTexture | null = null
+
+function getChevronTexture(): THREE.CanvasTexture {
+  if (chevronTexture) return chevronTexture
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 256
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 16
+    ctx.lineJoin = 'miter'
+    // Two chevrons per tile, pointing up (= uphill once laid on the deck).
+    for (const y of [100, 228]) {
+      ctx.beginPath()
+      ctx.moveTo(18, y)
+      ctx.lineTo(64, y - 46)
+      ctx.lineTo(110, y)
+      ctx.stroke()
+    }
+  }
+  chevronTexture = new THREE.CanvasTexture(canvas)
+  chevronTexture.wrapT = THREE.RepeatWrapping
+  chevronTexture.repeat.set(1, 2)
+  chevronTexture.colorSpace = THREE.SRGBColorSpace
+  chevronTexture.userData.shared = true
+  return chevronTexture
+}
+
+function getRampResources(): RampResources {
+  if (rampResources) return rampResources
+  const { WIDTH: W, LENGTH: L, THICKNESS: T } = RAMP
+  const res: RampResources = {
+    deckGeo: new THREE.BoxGeometry(W, T, L),
+    deckMat: new THREE.MeshStandardMaterial({ color: 0x1a1a2e, metalness: 0.8, roughness: 0.3 }),
+    sideGeo: new THREE.BoxGeometry(0.08, 0.08, L),
+    crossGeo: new THREE.BoxGeometry(W + 0.08, 0.08, 0.08),
+    chevronGeo: new THREE.PlaneGeometry(W - 0.8, L - 1.2),
+    pillarGeo: new THREE.CylinderGeometry(0.28, 0.28, 1, 8),
+    pillarMat: new THREE.MeshStandardMaterial({ color: 0x2a2a3e, metalness: 0.9, roughness: 0.2 })
+  }
+  for (const item of Object.values(res)) item.userData.shared = true
+  rampResources = res
+  return res
+}
+
+/**
+ * A drivable ramp. The geometry and the car physics share ONE analytic
+ * surface (`sample()`), so what you see is exactly what you drive on.
+ *
+ * (Old bug: the mesh used rotation.x = -0.3, which actually rises toward +Z,
+ *  while the car assumed it rose toward -Z → the car hovered at the wrong end.)
+ */
+export class NeonRamp implements RampSurface {
+  public readonly group = new THREE.Group()
+  public readonly position: THREE.Vector3 = this.group.position
+  public readonly rampMesh: THREE.Mesh
+  public readonly yaw: number
+  public readonly slope: number = RAMP.PITCH
+
+  private readonly halfRun = (RAMP.LENGTH / 2) * Math.cos(RAMP.PITCH)
+  private readonly tanPitch = Math.tan(RAMP.PITCH)
+  private readonly phase = Math.random() * Math.PI * 2
+  private edgeMaterial!: THREE.MeshStandardMaterial
+
+  constructor(x: number, z: number, color: number = 0x00ffff, yaw: number = 0) {
+    this.yaw = yaw
     this.group.position.set(x, 0, z)
+    this.group.rotation.y = yaw
+    this.rampMesh = this.build(color)
   }
 
-  private buildRamp(color: number) {
-    const colorThree = new THREE.Color(color)
+  /** Surface height / slope under a world X/Z point, or null if off the ramp. */
+  public sample(x: number, z: number): RampSample | null {
+    const dx = x - this.position.x
+    const dz = z - this.position.z
+    if (dx * dx + dz * dz > 100) return null // quick reject (ramp radius ≈ 6.7)
 
-    // Ramp surface - angled platform
-    const rampGeo = new THREE.BoxGeometry(6, 0.3, 12)
-    const rampMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1a2e,
-      metalness: 0.8,
-      roughness: 0.3
-    })
-    const ramp = new THREE.Mesh(rampGeo, rampMat)
-    ramp.position.y = 1.5
-    ramp.rotation.x = -0.3  // 17 degree incline
-    ramp.castShadow = true
-    ramp.receiveShadow = true
-    this.group.add(ramp)
+    const c = Math.cos(this.yaw)
+    const s = Math.sin(this.yaw)
+    const lx = dx * c - dz * s // world → ramp-local
+    const lz = dx * s + dz * c
+    if (Math.abs(lx) > RAMP.WIDTH / 2 + 0.2 || Math.abs(lz) > this.halfRun) return null
 
-    // Glowing edge strips
-    const edgeGeo = new THREE.BoxGeometry(6.1, 0.05, 0.05)
-    const edgeMat = new THREE.MeshStandardMaterial({
-      color: colorThree,
-      emissive: colorThree,
+    return {
+      height: this.tanPitch * (this.halfRun - lz), // 0 at the low end, rises toward -Z
+      slope: this.slope,
+      uphillX: -s,
+      uphillZ: -c
+    }
+  }
+
+  public update(time: number): void {
+    this.edgeMaterial.emissiveIntensity = 3.5 + Math.sin(time * 3 + this.phase) * 1.2
+  }
+
+  public dispose(): void {
+    disposeObject(this.group)
+  }
+
+  private build(color: number): THREE.Mesh {
+    const { WIDTH: W, LENGTH: L, THICKNESS: T, PITCH: P } = RAMP
+    const res = getRampResources()
+    const c = new THREE.Color(color)
+
+    // Place the deck so its LOW end touches the ground exactly.
+    const centerY = this.tanPitch * this.halfRun - T / (2 * Math.cos(P))
+    const deck = new THREE.Group()
+    deck.position.set(0, centerY, 0)
+    deck.rotation.x = P // positive → rises toward -Z
+    this.group.add(deck)
+
+    const deckMesh = new THREE.Mesh(res.deckGeo, res.deckMat)
+    deckMesh.castShadow = true
+    deckMesh.receiveShadow = true
+    deck.add(deckMesh)
+
+    // Glowing edges (deck-local coordinates, so they always sit on the surface)
+    this.edgeMaterial = new THREE.MeshStandardMaterial({
+      color: c,
+      emissive: c,
       emissiveIntensity: 4
     })
+    for (const x of [-W / 2, W / 2]) {
+      const side = new THREE.Mesh(res.sideGeo, this.edgeMaterial)
+      side.position.set(x, T / 2, 0)
+      deck.add(side)
+    }
+    for (const z of [-L / 2, L / 2]) {
+      const cross = new THREE.Mesh(res.crossGeo, this.edgeMaterial)
+      cross.position.set(0, T / 2, z)
+      deck.add(cross)
+    }
 
-    // Top edge
-    const topEdge = new THREE.Mesh(edgeGeo, edgeMat)
-    topEdge.position.set(0, 2.8, -4.5)
-    topEdge.rotation.x = -0.3
-    this.group.add(topEdge)
+    // Animated chevrons showing the driving direction
+    const chevrons = new THREE.Mesh(
+      res.chevronGeo,
+      new THREE.MeshBasicMaterial({
+        map: getChevronTexture(),
+        color: c,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    )
+    chevrons.rotation.x = -Math.PI / 2
+    chevrons.position.set(0, T / 2 + 0.02, 0)
+    deck.add(chevrons)
 
-    // Bottom edge
-    const bottomEdge = new THREE.Mesh(edgeGeo, edgeMat)
-    bottomEdge.position.set(0, 0.3, 4.5)
-    this.group.add(bottomEdge)
+    // Pillars sized to the real deck height (they used to poke through the deck)
+    for (const z of [-3.5, 0, 3.5]) {
+      const underside = this.tanPitch * (this.halfRun - z) - T / Math.cos(P)
+      if (underside < 0.2) continue
+      for (const x of [-2.4, 2.4]) {
+        const pillar = new THREE.Mesh(res.pillarGeo, res.pillarMat)
+        pillar.scale.y = underside
+        pillar.position.set(x, underside / 2, z)
+        pillar.castShadow = true
+        this.group.add(pillar)
+      }
+    }
 
-    // Side edges
-    const sideGeo = new THREE.BoxGeometry(0.05, 0.05, 12)
-    const sideL = new THREE.Mesh(sideGeo, edgeMat.clone())
-    sideL.position.set(-3, 1.5, 0)
-    sideL.rotation.x = -0.3
-    this.group.add(sideL)
+    // Fake light pool instead of a PointLight
+    const pool = createGroundGlow(c, 10, 0.4)
+    pool.position.y = 0.04
+    this.group.add(pool)
 
-    const sideR = sideL.clone()
-    sideR.position.set(3, 1.5, 0)
-    this.group.add(sideR)
-
-    // Support pillars
-    const pillarGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8)
-    const pillarMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2a3e,
-      metalness: 0.9,
-      roughness: 0.2
-    })
-    const pillarPositions = [[-2.5, 0.75, 4], [2.5, 0.75, 4], [-2.5, 0.75, -2], [2.5, 0.75, -2]]
-    pillarPositions.forEach(pos => {
-      const pillar = new THREE.Mesh(pillarGeo, pillarMat)
-      pillar.position.set(pos[0], pos[1], pos[2])
-      pillar.castShadow = true
-      this.group.add(pillar)
-    })
-
-    // Glow light underneath
-    const glowLight = new THREE.PointLight(colorThree, 2, 10)
-    glowLight.position.set(0, 0.5, 0)
-    this.group.add(glowLight)
+    return deckMesh
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Ring
+// ─────────────────────────────────────────────────────────────
+
+let ringGeo: THREE.TorusGeometry | null = null
+let innerRingGeo: THREE.TorusGeometry | null = null
+
+const COLLECT_DURATION = 0.5
+
 export class NeonRing {
-  public group: THREE.Group
-  public position: THREE.Vector3
-  public baseY: number
-  private bobTime: number
+  public readonly group = new THREE.Group()
+  public readonly position: THREE.Vector3 = this.group.position
+  public readonly baseY: number
+  public collected = false
+  // A generous pickup radius makes rings reliable at normal driving speed.
+  public readonly collectRadius = 5
+
+  private bobTime = Math.random() * Math.PI * 2
+  private collectT = -1
+  private readonly ringMat: THREE.MeshStandardMaterial
+  private readonly innerMat: THREE.MeshStandardMaterial
+  private readonly glow: THREE.Sprite
 
   constructor(x: number, y: number, z: number, color: number = 0xff00ff) {
-    this.group = new THREE.Group()
-    this.position = this.group.position
     this.baseY = y
-    this.bobTime = Math.random() * Math.PI * 2
+    const c = new THREE.Color(color)
 
-    this.buildRing(color)
-    this.group.position.set(x, y, z)
-  }
+    if (!ringGeo || !innerRingGeo) {
+      ringGeo = new THREE.TorusGeometry(3, 0.15, 16, 32)
+      innerRingGeo = new THREE.TorusGeometry(2.5, 0.05, 8, 32)
+      ringGeo.userData.shared = true
+      innerRingGeo.userData.shared = true
+    }
 
-  private buildRing(color: number) {
-    const colorThree = new THREE.Color(color)
-
-    // Main ring
-    const ringGeo = new THREE.TorusGeometry(3, 0.15, 16, 32)
-    const ringMat = new THREE.MeshStandardMaterial({
-      color: colorThree,
-      emissive: colorThree,
+    this.ringMat = new THREE.MeshStandardMaterial({
+      color: c,
+      emissive: c,
       emissiveIntensity: 5,
       transparent: true,
       opacity: 0.9
     })
-    const ring = new THREE.Mesh(ringGeo, ringMat)
-    this.group.add(ring)
-
-    // Inner glow ring
-    const innerRingGeo = new THREE.TorusGeometry(2.5, 0.05, 8, 32)
-    const innerRingMat = new THREE.MeshStandardMaterial({
+    this.innerMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      emissive: colorThree,
+      emissive: c,
       emissiveIntensity: 3,
       transparent: true,
       opacity: 0.5
     })
-    const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat)
-    this.group.add(innerRing)
+    this.group.add(new THREE.Mesh(ringGeo, this.ringMat), new THREE.Mesh(innerRingGeo, this.innerMat))
 
-    // Point light in center
-    const light = new THREE.PointLight(colorThree, 3, 8)
-    this.group.add(light)
+    // Fake light (sprite) instead of a PointLight
+    this.glow = createGlowSprite(c, 11, 0.5)
+    this.group.add(this.glow)
+
+    this.group.position.set(x, y, z)
   }
 
-  public update(delta: number) {
+  public update(delta: number): void {
+    if (this.collectT >= 0) {
+      this.collectT += delta
+      const t = Math.min(this.collectT / COLLECT_DURATION, 1)
+      this.group.scale.setScalar(1 + t * 1.6)
+      this.ringMat.opacity = 0.9 * (1 - t)
+      this.innerMat.opacity = 0.5 * (1 - t)
+      this.glow.material.opacity = 0.5 * (1 - t)
+      if (t >= 1) {
+        this.group.visible = false
+        this.collectT = -1
+      }
+      return
+    }
+    if (this.collected) return
+
     this.bobTime += delta * 2
     this.group.position.y = this.baseY + Math.sin(this.bobTime) * 0.5
+    this.group.rotation.y += delta * 0.4
     this.group.rotation.x = Math.sin(this.bobTime * 0.5) * 0.1
+  }
+
+  public contains(point: THREE.Vector3): boolean {
+    return !this.collected && this.group.position.distanceToSquared(point) <= this.collectRadius ** 2
+  }
+
+  /** Marks the ring collected and plays the pop animation. Returns false if already collected. */
+  public collect(): boolean {
+    if (this.collected) return false
+    this.collected = true
+    this.collectT = 0
+    return true
+  }
+
+  public reset(): void {
+    this.collected = false
+    this.collectT = -1
+    this.group.visible = true
+    this.group.scale.setScalar(1)
+    this.ringMat.opacity = 0.9
+    this.innerMat.opacity = 0.5
+    this.glow.material.opacity = 0.5
+  }
+
+  public dispose(): void {
+    disposeObject(this.group)
   }
 }
 
-export function createMiniGameElements(scene: THREE.Scene) {
-  const ramps: NeonRamp[] = []
-  const rings: NeonRing[] = []
+// ─────────────────────────────────────────────────────────────
+// Field (everything together)
+// ─────────────────────────────────────────────────────────────
 
-  // Scattered ramps around the map
-  const rampPositions = [
-    { x: 30, z: -30, color: 0x00ffff },
-    { x: -35, z: 25, color: 0xff00ff },
-    { x: 45, z: 40, color: 0x00ff88 },
-    { x: -50, z: -45, color: 0xffaa00 },
-  ]
-
-  rampPositions.forEach(p => {
-    const ramp = new NeonRamp(p.x, p.z, p.color)
-    scene.add(ramp.group)
-    ramps.push(ramp)
-  })
-
-  // Floating rings scattered across the map
-  const ringPositions = [
-    { x: 20, y: 8, z: -20, color: 0x00ffff },
-    { x: -25, y: 10, z: -35, color: 0xff00ff },
-    { x: 35, y: 12, z: 15, color: 0xffaa00 },
-    { x: -40, y: 9, z: 30, color: 0x00ff88 },
-    { x: 0, y: 15, z: -50, color: 0xff00aa },
-    { x: -60, y: 11, z: -10, color: 0xaa00ff },
-    { x: 55, y: 8, z: -55, color: 0x00aaff },
-    { x: 10, y: 14, z: 50, color: 0xff5500 },
-  ]
-
-  ringPositions.forEach(p => {
-    const ring = new NeonRing(p.x, p.y, p.z, p.color)
-    scene.add(ring.group)
-    rings.push(ring)
-  })
-
-  return { ramps, rings }
+export interface RingCollectEvent {
+  ring: NeonRing
+  index: number
+  /** Stable id ("ring-0" …) – use it for persistent achievements. */
+  id: string
 }
+
+export const ringId = (index: number): string => `ring-${index}`
+
+export class MiniGameField {
+  public readonly group = new THREE.Group()
+  public readonly ramps: NeonRamp[] = []
+  public readonly rings: NeonRing[] = []
+  private time = 0
+
+  constructor(scene?: THREE.Scene) {
+    for (const p of RAMP_LAYOUT) {
+      const ramp = new NeonRamp(p.x, p.z, p.color, p.yaw ?? 0)
+      this.ramps.push(ramp)
+      this.group.add(ramp.group)
+    }
+    for (const p of RING_LAYOUT) {
+      const ring = new NeonRing(p.x, p.y, p.z, p.color)
+      this.rings.push(ring)
+      this.group.add(ring.group)
+    }
+    scene?.add(this.group)
+  }
+
+  public get totalRings(): number {
+    return this.rings.length
+  }
+
+  public get collectedRings(): number {
+    return this.rings.reduce((n, r) => n + (r.collected ? 1 : 0), 0)
+  }
+
+  public update(delta: number): void {
+    this.time += delta
+    for (const ramp of this.ramps) ramp.update(this.time)
+    for (const ring of this.rings) ring.update(delta)
+    getChevronTexture().offset.y -= delta * 0.8 // chevrons flow uphill
+  }
+
+  /** Collects every ring within reach of `point`. Returns how many were collected. */
+  public collectRings(point: THREE.Vector3, onCollect?: (event: RingCollectEvent) => void): number {
+    let count = 0
+    this.rings.forEach((ring, index) => {
+      if (ring.contains(point) && ring.collect()) {
+        count++
+        onCollect?.({ ring, index, id: ringId(index) })
+      }
+    })
+    return count
+  }
+
+  public resetRings(): void {
+    for (const ring of this.rings) ring.reset()
+  }
+
+  public dispose(): void {
+    disposeObject(this.group)
+  }
+}
+
+/** Legacy helper – prefer `new MiniGameField(scene)`. */
+export function createMiniGameElements(scene: THREE.Scene) {
+  const field = new MiniGameField(scene)
+  return { ramps: field.ramps, rings: field.rings, field }
+}
+

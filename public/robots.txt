@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Sitemap: https://mahamed-yasser-3d.pages.dev/sitemap.xml
+

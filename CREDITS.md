@@ -26,3 +26,4 @@
 All 3D assets (buildings, trees, car, terrain) are **procedurally generated** using Three.js primitives. No external model files are used.
 
 Sound effects are generated programmatically via Web Audio API (oscillators for engine, noise buffers for tire screech).
+

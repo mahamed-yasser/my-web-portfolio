@@ -1,96 +1,95 @@
-# My Web Portfolio
+# Mahamed Yasser - Interactive 3D Developer Portfolio
 
-Interactive 3D portfolio website — drive a hover car around a stylized world to discover content zones.
+<p align="center">
+  <strong>An immersive portfolio you can explore by driving through a stylized 3D world.</strong>
+</p>
 
-## Quick Start
+<p align="center">
+  <a href="https://mahamed-yasser-3d.pages.dev/"><strong>🚀 Visit the live portfolio</strong></a>
+</p>
+
+<p align="center">
+  <img alt="Three.js" src="https://img.shields.io/badge/Three.js-3D-black?logo=threedotjs&logoColor=white">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white">
+  <img alt="Cloudflare Pages" src="https://img.shields.io/badge/Deployed%20on-Cloudflare%20Pages-F38020?logo=cloudflare&logoColor=white">
+</p>
+
+## 🌌 About the Project
+
+This immersive, interactive 3D web portfolio showcases modern browser-based 3D experiences, dynamic interface components, and full-stack development skills. Visitors can drive a hover car through a stylized world and discover interactive zones for projects, skills, experience, and contact details.
+
+The experience also includes a classic portfolio view, so visitors can browse the same work in a familiar, readable layout.
+
+## 👋 About the Developer
+
+Designed and developed by **Mahamed Yasser**, a **Full-Stack Developer & 3D Web Creator** interested in interactive web experiences, Python development, and automation.
+
+## ✨ Features
+
+- 🏎️ **Interactive 3D world:** Explore portfolio sections by driving a hover car.
+- 🧭 **Portfolio content zones:** Discover projects, skills, experience, education, achievements, and contact information.
+- 🪟 **Classic portfolio view:** Switch to a structured page layout for straightforward browsing.
+- 🌍 **English and Arabic:** Includes Arabic translation and right-to-left layout support.
+- 📱 **Responsive controls:** Adapts to mobile screens with touch controls and an on-screen joystick.
+- ♿ **Accessible interactions:** Includes keyboard navigation, reduced-motion support, and clear focus styles.
+- 🧰 **Extra portfolio tools:** Use recruiter mode, the local portfolio assistant, and the navigation terminal.
+
+## 🛠️ Tech Stack
+
+| Tool | Role |
+| --- | --- |
+| [Three.js](https://threejs.org/) | Real-time 3D scene, world, and interactions |
+| [Vite](https://vite.dev/) | Development server and production bundling |
+| TypeScript and JavaScript | Application logic and interactive features |
+| HTML and CSS | Semantic page structure, layout, and responsive styling |
+| [Cloudflare Pages](https://pages.cloudflare.com/) | Live portfolio deployment |
+| GSAP, Howler.js, lil-gui | Animation, audio, and development controls |
+
+> React is among Mahamed's learning skills; this portfolio itself is built with Three.js, TypeScript, and Vite without React or Tailwind CSS.
+
+## 🎮 Controls
+
+| Key | Action |
+| --- | --- |
+| `W` / `↑` | Accelerate |
+| `S` / `↓` | Brake or reverse |
+| `A` / `←` | Turn left |
+| `D` / `→` | Turn right |
+| `Space` | Handbrake |
+| `Shift` | Boost |
+| `R` | Reset the car |
+
+On mobile, use the on-screen joystick and touch controls.
+
+## 🚀 Run Locally
+
+Requires Node.js 18 or newer.
 
 ```bash
+git clone https://github.com/mahamedwow1-afk/3d-portfolio.git
+cd 3d-portfolio
 npm install
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
+Open the local URL printed by Vite, usually `http://localhost:5173`.
 
-## Controls
-
-| Key | Action |
-|-----|--------|
-| W / ↑ | Accelerate |
-| S / ↓ | Brake / Reverse |
-| A / ← | Turn left |
-| D / → | Turn right |
-| Space | Handbrake |
-| Shift | Boost |
-| R | Reset car |
-
-Mobile: on-screen joystick appears automatically.
-
-## i18n (Languages)
-
-- **English** (default)
-- **العربية** (RTL support)
-
-Toggle language in the top bar. Browser language is detected automatically on first visit.
-
-To add a new language:
-1. Create `src/i18n/locales/<code>.json` with all keys from `en.json`
-2. Import and register it in `src/i18n/index.ts`
-3. Done — no other code changes needed
-
-## Data
-
-- GitHub data: `scripts/fetch-github.mjs` — pulls from GitHub API, saves to `src/data/github.json`
-- Profile data: `src/data/profile.ts` — single source of truth, edit directly
-- Required env: `GITHUB_TOKEN` (optional, for higher rate limits)
-
-## Build & Deploy
+Create and preview a production build with:
 
 ```bash
-npm run build       # Production build → dist/
-npm run preview     # Preview build locally
-npm run deploy      # Deploy to Cloudflare Workers
+npm run build
+npm run preview
 ```
 
-## Custom Domain (Cloudflare)
+## 📬 Contact
 
-1. Buy a domain from any registrar (Namecheap, Cloudflare Registrar, etc.)
-2. In Cloudflare Dashboard → add your domain
-3. Set nameservers to Cloudflare's (you'll get 2 NS records)
-4. In Cloudflare → Workers & Pages → your worker → Custom Domains → add your domain
-5. Wait for DNS propagation (usually minutes)
-6. Your site will be live at `https://yourdomain.com`
+- 💻 [GitHub](https://github.com/mahamedwow1-afk)
+- ✉️ [Email](mailto:mahamedwow1@gmail.com)
+- 💬 [Telegram](https://t.me/Mahamed_Yasser)
+- 📱 [WhatsApp](https://wa.me/201118003625)
 
-## Project Structure
+## 📄 License
 
-```
-src/
-  core/        — Three.js engine, animation loop
-  world/       — Ground, buildings, nature, lighting
-  vehicle/     — Hover car, physics, controls
-  zones/       — Content zones (About, Projects, Skills...)
-  ui/          — DOM overlays, HUD, minimap
-  data/        — Profile data (single source of truth)
-  i18n/        — Language files (en.json, ar.json)
-  audio/       — Engine sound, SFX
-```
+Private portfolio project; not open source.
 
-## Development
-
-```bash
-npm run dev          # Start dev server (HMR enabled)
-npx tsc --noEmit     # Type check
-npm run build        # Production build
-```
-
-## Tech Stack
-
-- Vite + TypeScript
-- Three.js (r170+)
-- Rapier.js (physics, planned)
-- GSAP (animations)
-- Howler.js (audio)
-- lil-gui (debug panel)
-
-## License
-
-Private portfolio — not open source.

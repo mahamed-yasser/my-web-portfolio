@@ -4,8 +4,15 @@ __pycache__/
 *.pyo
 node_modules/
 dist/
+build/
+out/
+.wrangler/
 .env
 .env.local
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
 .DS_Store
 *.log
 .vscode/
@@ -15,3 +22,4 @@ coverage/
 .pytest_cache/
 .mypy_cache/
 *.tsbuildinfo
+

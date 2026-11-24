@@ -1,304 +1,273 @@
 import * as THREE from 'three'
+import type { ClearZone, Collider } from './types.js'
+import { WORLD } from './constants.js'
+import {
+  SynthwaveWorld,
+  getDefaultClearZones,
+  type WorldOptions,
+  type WorldQuality
+} from './synthwave-world.js'
+import { disposeObject, mulberry32 } from './utils.js'
 
-export interface Testimonial {
-  name: string
-  role: string
-  text: string
-  rating?: number
+// ─────────────────────────────────────────────────────────────
+// Scenery: neon trees + wireframe mountains
+// ─────────────────────────────────────────────────────────────
+
+export interface SceneryOptions {
+  seed?: number
+  quality?: WorldQuality
+  /** Areas that must stay empty (ramps, spawn point, robots…). */
+  keepClear?: readonly ClearZone[]
+  /** Number of trees at `high` quality. */
+  treeCount?: number
+  mountainCount?: number
 }
 
-export function createSynthwaveEnvironment(scene: THREE.Scene) {
-  // ─── Background & Fog ───────────────────────────────────────
-  scene.background = new THREE.Color(0x09071b)
-  scene.fog = new THREE.FogExp2(0x09071b, 0.008)
+const QUALITY_SCALE: Record<WorldQuality, number> = { low: 0.4, medium: 0.7, high: 1 }
+const TREE_SPACING = 5
+const TREE_MIN_ORIGIN_DISTANCE = 30
 
-  // ─── Starfield ──────────────────────────────────────────────
-  const starCount = 3000
-  const starGeo = new THREE.BufferGeometry()
-  const starPositions = new Float32Array(starCount * 3)
-  const starColors = new Float32Array(starCount * 3)
+interface TreeSpot {
+  x: number
+  z: number
+  scale: number
+  yaw: number
+}
 
-  for (let i = 0; i < starCount; i++) {
-    const i3 = i * 3
-    const radius = 300 + Math.random() * 400
-    const theta = Math.random() * Math.PI * 2
-    const phi = Math.acos(2 * Math.random() - 1)
+/**
+ * Procedural scenery built from a handful of InstancedMeshes (the old version
+ * created ~600 meshes and ~500 materials for 100 trees).
+ */
+export class Scenery {
+  public readonly group = new THREE.Group()
+  /** Trunk colliders – the car doesn't use them yet, but gameplay code can. */
+  public readonly colliders: Collider[] = []
 
-    starPositions[i3] = radius * Math.sin(phi) * Math.cos(theta)
-    starPositions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta)
-    starPositions[i3 + 2] = radius * Math.cos(phi)
+  private readonly canopyMaterials: THREE.MeshStandardMaterial[] = []
 
-    const colorChoice = Math.random()
-    if (colorChoice < 0.5) {
-      starColors[i3] = 1; starColors[i3 + 1] = 1; starColors[i3 + 2] = 1
-    } else if (colorChoice < 0.75) {
-      starColors[i3] = 0.6; starColors[i3 + 1] = 0.8; starColors[i3 + 2] = 1
-    } else {
-      starColors[i3] = 1; starColors[i3 + 1] = 0.6; starColors[i3 + 2] = 0.8
-    }
+  constructor(scene?: THREE.Scene, options: SceneryOptions = {}) {
+    const rng = mulberry32(options.seed ?? 2024)
+    const scale = QUALITY_SCALE[options.quality ?? 'high']
+    const keepClear = options.keepClear ?? getDefaultClearZones()
+
+    this.buildTrees(rng, Math.round((options.treeCount ?? 140) * scale), keepClear)
+    this.buildMountains(rng, Math.max(8, Math.round((options.mountainCount ?? 20) * scale)))
+    scene?.add(this.group)
   }
 
-  starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
-  starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3))
-
-  const starMat = new THREE.PointsMaterial({
-    size: 1.2,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.9,
-    sizeAttenuation: true,
-    blending: THREE.AdditiveBlending
-  })
-  const stars = new THREE.Points(starGeo, starMat)
-  scene.add(stars)
-
-  // ─── Nebula Clouds ──────────────────────────────────────────
-  for (let i = 0; i < 12; i++) {
-    const geo = new THREE.SphereGeometry(40 + Math.random() * 60, 16, 16)
-    const mat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color().setHSL(0.75 + Math.random() * 0.2, 0.9, 0.3),
-      transparent: true,
-      opacity: 0.12,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending
+  public update(time: number): void {
+    this.canopyMaterials.forEach((mat, j) => {
+      mat.emissiveIntensity = 0.5 + j * 0.1 + Math.sin(time * 1.5 + j * 0.8) * 0.12
     })
-    const cloud = new THREE.Mesh(geo, mat)
-    cloud.position.set(
-      (Math.random() - 0.5) * 400,
-      60 + Math.random() * 120,
-      (Math.random() - 0.5) * 400
+  }
+
+  public dispose(): void {
+    disposeObject(this.group)
+    this.colliders.length = 0
+    this.canopyMaterials.length = 0
+  }
+
+  // ── Trees ───────────────────────────────────────────────────
+
+  private pickTreeSpots(rng: () => number, count: number, keepClear: readonly ClearZone[]): TreeSpot[] {
+    const limit = WORLD.HALF_SIZE - 10
+    const spots: TreeSpot[] = []
+    const minGap = TREE_SPACING * TREE_SPACING
+
+    for (let attempt = 0; attempt < count * 25 && spots.length < count; attempt++) {
+      const x = (rng() * 2 - 1) * limit
+      const z = (rng() * 2 - 1) * limit
+      if (Math.hypot(x, z) < TREE_MIN_ORIGIN_DISTANCE) continue
+      if (keepClear.some(c => Math.hypot(x - c.x, z - c.z) < c.r)) continue
+      if (spots.some(p => (p.x - x) ** 2 + (p.z - z) ** 2 < minGap)) continue
+      spots.push({ x, z, scale: 0.8 + rng() * 0.8, yaw: rng() * Math.PI * 2 })
+    }
+    return spots
+  }
+
+  private buildTrees(rng: () => number, count: number, keepClear: readonly ClearZone[]): void {
+    const spots = this.pickTreeSpots(rng, count, keepClear)
+    if (spots.length === 0) return
+    const dummy = new THREE.Object3D()
+
+    /** One InstancedMesh holding a single tree part for every tree. */
+    const instance = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material,
+      localY: number,
+      castShadow = false
+    ): THREE.InstancedMesh => {
+      const mesh = new THREE.InstancedMesh(geometry, material, spots.length)
+      spots.forEach((s, i) => {
+        dummy.position.set(s.x, localY * s.scale, s.z)
+        dummy.rotation.set(0, s.yaw, 0)
+        dummy.scale.setScalar(s.scale)
+        dummy.updateMatrix()
+        mesh.setMatrixAt(i, dummy.matrix)
+      })
+      mesh.instanceMatrix.needsUpdate = true
+      mesh.castShadow = castShadow
+      mesh.frustumCulled = false // instance bounds are not tracked
+      this.group.add(mesh)
+      return mesh
+    }
+
+    instance(
+      new THREE.CylinderGeometry(0.15, 0.25, 3, 6),
+      new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 0.6 }),
+      1.5,
+      true
     )
-    cloud.scale.set(1, 0.4, 1)
-    scene.add(cloud)
-  }
 
-  // ─── Lighting ───────────────────────────────────────────────
-  const ambient = new THREE.AmbientLight(0x1a0b2e, 0.8)
-  scene.add(ambient)
-
-  const hemi = new THREE.HemisphereLight(0x4a0080, 0x0a0014, 0.4)
-  scene.add(hemi)
-
-  const rimLight1 = new THREE.DirectionalLight(0x00ffff, 1.2)
-  rimLight1.position.set(-50, 30, -50)
-  scene.add(rimLight1)
-
-  const rimLight2 = new THREE.DirectionalLight(0xff00ff, 1.0)
-  rimLight2.position.set(50, 30, 50)
-  scene.add(rimLight2)
-
-  const sunLight = new THREE.DirectionalLight(0xff6600, 1.5)
-  sunLight.position.set(100, 80, -100)
-  scene.add(sunLight)
-
-  // ─── Reflective Ground ──────────────────────────────────────
-  const groundGeo = new THREE.PlaneGeometry(600, 600)
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x0a0014,
-    roughness: 0.15,
-    metalness: 0.9,
-    transparent: true,
-    opacity: 0.9
-  })
-  const ground = new THREE.Mesh(groundGeo, groundMat)
-  ground.rotation.x = -Math.PI / 2
-  ground.position.y = -0.1
-  ground.receiveShadow = true
-  scene.add(ground)
-
-  // ─── Neon Grid Floor ────────────────────────────────────────
-  const gridSize = 600
-  const divisions = 120
-  const cellSize = gridSize / divisions
-
-  const linePositions: number[] = []
-  const lineColors: number[] = []
-
-  for (let i = -divisions / 2; i <= divisions / 2; i++) {
-    const x = i * cellSize
-    const z = -gridSize / 2
-    linePositions.push(x, 0, z, x, 0, z + cellSize)
-    lineColors.push(0, 1, 1, 0, 1, 1)
-    linePositions.push(x, 0, z, x + cellSize, 0, z)
-    lineColors.push(0, 1, 1, 0, 1, 1)
-  }
-
-  for (let i = -divisions / 2; i <= divisions / 2; i += 5) {
-    const x = i * cellSize
-    linePositions.push(x, 0.02, -gridSize / 2, x, 0.02, gridSize / 2)
-    lineColors.push(1, 0, 1, 1, 0, 1)
-    linePositions.push(-gridSize / 2, 0.02, x, gridSize / 2, 0.02, x)
-    lineColors.push(1, 0, 1, 1, 0, 1)
-  }
-
-  const gridGeo = new THREE.BufferGeometry()
-  gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3))
-  gridGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3))
-
-  const gridMat = new THREE.LineBasicMaterial({
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.8,
-    blending: THREE.AdditiveBlending
-  })
-  const grid = new THREE.LineSegments(gridGeo, gridMat)
-  scene.add(grid)
-
-  // Secondary grid
-  const grid2Geo = new THREE.BufferGeometry()
-  const grid2Positions: number[] = []
-  for (let i = -divisions / 2; i <= divisions / 2; i++) {
-    const x = i * cellSize
-    grid2Positions.push(x, -0.1, -gridSize / 2, x, -0.1, gridSize / 2)
-    grid2Positions.push(-gridSize / 2, -0.1, x, gridSize / 2, -0.1, x)
-  }
-  grid2Geo.setAttribute('position', new THREE.Float32BufferAttribute(grid2Positions, 3))
-  const grid2Mat = new THREE.LineBasicMaterial({
-    color: 0x4a0080,
-    transparent: true,
-    opacity: 0.3,
-    blending: THREE.AdditiveBlending
-  })
-  const grid2 = new THREE.LineSegments(grid2Geo, grid2Mat)
-  scene.add(grid2)
-
-  // ─── Floating Particles ─────────────────────────────────────
-  const particleCount = 500
-  const particleGeo = new THREE.BufferGeometry()
-  const positions = new Float32Array(particleCount * 3)
-  const colors = new Float32Array(particleCount * 3)
-
-  for (let i = 0; i < particleCount; i++) {
-    positions[i * 3] = (Math.random() - 0.5) * 400
-    positions[i * 3 + 1] = Math.random() * 50 + 2
-    positions[i * 3 + 2] = (Math.random() - 0.5) * 400
-
-    const hue = Math.random()
-    if (hue < 0.33) {
-      colors[i * 3] = 0; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1
-    } else if (hue < 0.66) {
-      colors[i * 3] = 1; colors[i * 3 + 1] = 0; colors[i * 3 + 2] = 1
-    } else {
-      colors[i * 3] = 0; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 0.5
-    }
-  }
-
-  particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-
-  const particleMat = new THREE.PointsMaterial({
-    size: 0.6,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.7,
-    blending: THREE.AdditiveBlending,
-    sizeAttenuation: true
-  })
-  const particles = new THREE.Points(particleGeo, particleMat)
-  scene.add(particles)
-
-  // ─── Mountains ──────────────────────────────────────────────
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2
-    const dist = 180 + Math.random() * 60
-    const x = Math.cos(angle) * dist
-    const z = Math.sin(angle) * dist
-    const height = 50 + Math.random() * 40
-
-    const geo = new THREE.ConeGeometry(30 + Math.random() * 15, height, 4)
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x1a0a3e,
-      emissive: 0x4a0080,
-      emissiveIntensity: 0.3,
-      flatShading: true,
-      transparent: true,
-      opacity: 0.7
-    })
-    const mountain = new THREE.Mesh(geo, mat)
-    mountain.position.set(x, height / 2 - 10, z)
-    scene.add(mountain)
-
-    const edges = new THREE.EdgesGeometry(geo)
-    const lineMat = new THREE.LineBasicMaterial({
-      color: 0xff00ff,
-      transparent: true,
-      opacity: 0.4,
-      blending: THREE.AdditiveBlending
-    })
-    const wireframe = new THREE.LineSegments(edges, lineMat)
-    wireframe.position.copy(mountain.position)
-    scene.add(wireframe)
-  }
-
-  // ─── Horizon Glow ───────────────────────────────────────────
-  const glowGeo = new THREE.PlaneGeometry(600, 20)
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: 0xff00ff,
-    transparent: true,
-    opacity: 0.3,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide
-  })
-  const glow = new THREE.Mesh(glowGeo, glowMat)
-  glow.position.set(0, 15, -200)
-  scene.add(glow)
-
-  const glow2 = glow.clone()
-  glow2.material = glowMat.clone()
-  glow2.material.color = new THREE.Color(0x00ffff)
-  glow2.material.opacity = 0.15
-  glow2.position.z = -180
-  glow2.scale.set(1.2, 0.5, 1)
-  scene.add(glow2)
-
-  // ─── Neon Trees ─────────────────────────────────────────────
-  for (let i = 0; i < 100; i++) {
-    const x = (Math.random() - 0.5) * 350
-    const z = (Math.random() - 0.5) * 350
-    if (Math.hypot(x, z) > 30) {
-      const treeGroup = new THREE.Group()
-
-      // Trunk
-      const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, 3, 6)
-      const trunkMat = new THREE.MeshStandardMaterial({
-        color: 0xff00ff,
-        emissive: 0xff00ff,
-        emissiveIntensity: 0.6
+    for (let j = 0; j < 3; j++) {
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x00ff88,
+        emissive: 0x00ff88,
+        emissiveIntensity: 0.5 + j * 0.1,
+        flatShading: true
       })
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat)
-      trunk.position.y = 1.5
-      treeGroup.add(trunk)
+      this.canopyMaterials.push(material)
+      instance(new THREE.ConeGeometry(1.8 - j * 0.4, 2, 6), material, 4 + j * 1.2, true)
+    }
 
-      // Canopy layers
-      for (let j = 0; j < 3; j++) {
-        const canopyGeo = new THREE.ConeGeometry(1.8 - j * 0.4, 2, 6)
-        const canopyMat = new THREE.MeshStandardMaterial({
-          color: 0x00ff88,
-          emissive: 0x00ff88,
-          emissiveIntensity: 0.5 + j * 0.1,
-          flatShading: true
-        })
-        const canopy = new THREE.Mesh(canopyGeo, canopyMat)
-        canopy.position.y = 4 + j * 1.2
-        treeGroup.add(canopy)
+    // Glowing ring on the ground (unlit, so it costs almost nothing)
+    instance(
+      new THREE.TorusGeometry(2, 0.06, 8, 16).rotateX(Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x00ffff }),
+      0.05
+    )
+
+    for (const s of spots) this.colliders.push({ x: s.x, z: s.z, r: 0.35 * s.scale, h: 7 * s.scale })
+  }
+
+  // ── Mountains ───────────────────────────────────────────────
+
+  /**
+   * Mountains stand OUTSIDE the drivable square (they used to sit at radius
+   * 180–240 while the world was 400 wide, i.e. in the middle of the map).
+   */
+  private buildMountains(rng: () => number, count: number): void {
+    const unitCone = new THREE.ConeGeometry(1, 1, 4)
+    const solid = new THREE.InstancedMesh(
+      unitCone,
+      new THREE.MeshStandardMaterial({
+        color: 0x1a0a3e,
+        emissive: 0x4a0080,
+        emissiveIntensity: 0.3,
+        flatShading: true,
+        fog: false
+      }),
+      count
+    )
+    solid.frustumCulled = false
+
+    // Wire edges: merged into ONE LineSegments (instancing isn't supported for lines).
+    const edges = new THREE.EdgesGeometry(unitCone)
+    const edgePos = edges.getAttribute('position')
+    const lines: number[] = []
+
+    const dummy = new THREE.Object3D()
+    const v = new THREE.Vector3()
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.18
+      const dist = WORLD.HALF_SIZE * 1.15 + rng() * 100
+      const radius = 45 + rng() * 30
+      const height = 70 + rng() * 60
+
+      dummy.position.set(Math.cos(angle) * dist, height / 2 - 10, Math.sin(angle) * dist)
+      dummy.rotation.set(0, rng() * Math.PI, 0)
+      dummy.scale.set(radius, height, radius)
+      dummy.updateMatrix()
+      solid.setMatrixAt(i, dummy.matrix)
+
+      for (let k = 0; k < edgePos.count; k++) {
+        v.fromBufferAttribute(edgePos, k).applyMatrix4(dummy.matrix)
+        lines.push(v.x, v.y, v.z)
       }
+    }
+    solid.instanceMatrix.needsUpdate = true
+    edges.dispose()
 
-      // Glow ring
-      const ringGeo = new THREE.TorusGeometry(2, 0.06, 8, 16)
-      const ringMat = new THREE.MeshStandardMaterial({
-        color: 0x00ffff,
-        emissive: 0x00ffff,
-        emissiveIntensity: 2
+    const wireGeometry = new THREE.BufferGeometry()
+    wireGeometry.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3))
+    const wire = new THREE.LineSegments(
+      wireGeometry,
+      new THREE.LineBasicMaterial({
+        color: 0xff00ff,
+        transparent: true,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false
       })
-      const ring = new THREE.Mesh(ringGeo, ringMat)
-      ring.rotation.x = Math.PI / 2
-      ring.position.y = 0.05
-      treeGroup.add(ring)
+    )
+    this.group.add(solid, wire)
+  }
+}
 
-      treeGroup.position.set(x, 0, z)
-      scene.add(treeGroup)
+// ─────────────────────────────────────────────────────────────
+// Everything together
+// ─────────────────────────────────────────────────────────────
+
+export interface EnvironmentOptions extends WorldOptions {
+  /** `false` = sky + terrain only. Pass an object to tune trees / mountains. */
+  scenery?: boolean | Pick<SceneryOptions, 'treeCount' | 'mountainCount'>
+}
+
+export interface SynthwaveEnvironment {
+  world: SynthwaveWorld
+  scenery: Scenery | null
+  /** Legacy fields (the old function returned `{ stars, particles }`). */
+  stars: THREE.Points
+  particles: THREE.Points
+  colliders: Collider[]
+  /** Call every frame. `focus` = player position (sky + shadows follow it). */
+  update(time: number, delta?: number, focus?: THREE.Vector3): void
+  dispose(): void
+}
+
+/**
+ * World + scenery in one call. Defaults to the `neon` theme (the look of the
+ * original function); pass `{ theme: 'moon' }` for the lunar variant.
+ *
+ * ```ts
+ * const env = createSynthwaveEnvironment(scene, { renderer, camera })
+ * // every frame
+ * env.update(clock.elapsedTime, delta, car.position)
+ * ```
+ */
+export function createSynthwaveEnvironment(
+  scene: THREE.Scene,
+  options: EnvironmentOptions = {}
+): SynthwaveEnvironment {
+  const keepClear = options.keepClear ?? getDefaultClearZones()
+
+  const world = new SynthwaveWorld(scene, {
+    ...options,
+    theme: options.theme ?? 'neon',
+    keepClear
+  }).init()
+
+  const sceneryOptions = typeof options.scenery === 'object' ? options.scenery : {}
+  const scenery =
+    options.scenery === false
+      ? null
+      : new Scenery(scene, { ...sceneryOptions, quality: options.quality, keepClear })
+
+  return {
+    world,
+    scenery,
+    stars: world.stars,
+    particles: world.particles,
+    colliders: [...world.colliders, ...(scenery?.colliders ?? [])],
+    update(time, delta, focus) {
+      world.update(time, delta, focus)
+      scenery?.update(time)
+    },
+    dispose() {
+      scenery?.dispose()
+      world.dispose()
     }
   }
-
-  return { stars, particles }
 }
+

@@ -1,145 +1,292 @@
 import * as THREE from 'three'
+import { WORLD } from './constants.js'
+import { clamp, createGlowSprite, damp, disposeObject, mulberry32 } from './utils.js'
 
-export class Spaceship {
-  public group: THREE.Group
-  public velocity: THREE.Vector3
-  public rotationSpeed: number
+// ─────────────────────────────────────────────────────────────
+// Options
+// ─────────────────────────────────────────────────────────────
 
-  constructor() {
-    this.group = new THREE.Group()
-    this.velocity = new THREE.Vector3()
-    this.rotationSpeed = 0
+export interface SpaceshipOptions {
+  /** Same seed → same flight paths on every load. */
+  seed?: number
+  /** Half-size of the airspace on X/Z. Defaults to the drivable world + margin. */
+  bounds?: number
+  /** Min / max cruising altitude. */
+  altitude?: [number, number]
+  /** Min / max speed in world units per second. */
+  speed?: [number, number]
+}
 
-    this.buildShip()
-    this.resetPosition()
-  }
+const DEFAULT_BOUNDS = WORLD.HALF_SIZE + 80
+const DEFAULT_ALTITUDE: [number, number] = [45, 130]
+const DEFAULT_SPEED: [number, number] = [35, 80]
+const MIN_ALTITUDE = 30
+const MAX_DELTA = 0.1
+const ACCENTS = [0x00ffff, 0xff00ff, 0x00ff88, 0xffaa00]
 
-  private buildShip() {
-    // Main fuselage - sleek cone shape
-    const bodyGeo = new THREE.ConeGeometry(0.3, 2, 6)
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1a2e,
-      metalness: 0.9,
-      roughness: 0.2
-    })
-    const body = new THREE.Mesh(bodyGeo, bodyMat)
-    body.rotation.x = Math.PI / 2
-    this.group.add(body)
+// ─────────────────────────────────────────────────────────────
+// Shared resources (one copy for the whole fleet)
+// ─────────────────────────────────────────────────────────────
 
-    // Cockpit window
-    const cockpitGeo = new THREE.SphereGeometry(0.2, 8, 8)
-    const cockpitMat = new THREE.MeshPhysicalMaterial({
+interface ShipResources {
+  body: THREE.ConeGeometry
+  cockpit: THREE.SphereGeometry
+  wing: THREE.BoxGeometry
+  engine: THREE.CylinderGeometry
+  strip: THREE.BoxGeometry
+  exhaust: THREE.ConeGeometry
+  bodyMat: THREE.MeshStandardMaterial
+  wingMat: THREE.MeshStandardMaterial
+  cockpitMat: THREE.MeshStandardMaterial
+  engineMat: THREE.MeshStandardMaterial
+}
+
+interface AccentMaterials {
+  strip: THREE.MeshStandardMaterial
+  exhaust: THREE.MeshBasicMaterial
+}
+
+let resources: ShipResources | null = null
+const accentCache = new Map<number, AccentMaterials>()
+
+function getResources(): ShipResources {
+  if (resources) return resources
+  const res: ShipResources = {
+    // Cones point along +Y; rotate once so the nose points along +Z (the forward axis).
+    body: new THREE.ConeGeometry(0.3, 2, 6).rotateX(Math.PI / 2),
+    cockpit: new THREE.SphereGeometry(0.2, 10, 10),
+    wing: new THREE.BoxGeometry(1.5, 0.05, 0.6),
+    engine: new THREE.CylinderGeometry(0.15, 0.25, 0.3, 8).rotateX(Math.PI / 2),
+    strip: new THREE.BoxGeometry(0.02, 0.02, 1.8),
+    // Open cone, tip pointing backwards (-Z): the exhaust plume.
+    exhaust: new THREE.ConeGeometry(0.2, 4, 8, 1, true).rotateX(-Math.PI / 2),
+    bodyMat: new THREE.MeshStandardMaterial({ color: 0x1a1a2e, metalness: 0.9, roughness: 0.2 }),
+    wingMat: new THREE.MeshStandardMaterial({ color: 0x2a2a3e, metalness: 0.8, roughness: 0.3 }),
+    // `transmission` removed: it forces an extra full-scene render pass.
+    cockpitMat: new THREE.MeshStandardMaterial({
       color: 0x00ffff,
       emissive: 0x00ffff,
-      emissiveIntensity: 0.5,
+      emissiveIntensity: 0.6,
       roughness: 0.05,
       metalness: 0.9,
-      transmission: 0.5,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.85
+    }),
+    engineMat: new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff4400, emissiveIntensity: 2 })
+  }
+  for (const item of Object.values(res)) item.userData.shared = true
+  resources = res
+  return res
+}
+
+function getAccent(color: number): AccentMaterials {
+  let mats = accentCache.get(color)
+  if (mats) return mats
+  mats = {
+    strip: new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 3 }),
+    exhaust: new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.3,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
     })
-    const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat)
+  }
+  mats.strip.userData.shared = true
+  mats.exhaust.userData.shared = true
+  accentCache.set(color, mats)
+  return mats
+}
+
+// ─────────────────────────────────────────────────────────────
+// Spaceship
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * A single ship that crosses the sky and respawns at the edge of the airspace.
+ * Local forward axis is +Z.
+ */
+export class Spaceship {
+  public readonly group = new THREE.Group()
+  /** World-space velocity (units / second). */
+  public readonly velocity = new THREE.Vector3()
+
+  private readonly rng: () => number
+  private readonly bounds: number
+  private readonly altitude: [number, number]
+  private readonly speedRange: [number, number]
+
+  private heading = 0
+  private speed = 0
+  private bank = 0
+  private phase = 0
+  private time = 0
+
+  constructor(options: SpaceshipOptions = {}, index = 0) {
+    this.rng = mulberry32((options.seed ?? 7) + index * 7919)
+    this.bounds = options.bounds ?? DEFAULT_BOUNDS
+    this.altitude = options.altitude ?? DEFAULT_ALTITUDE
+    this.speedRange = options.speed ?? DEFAULT_SPEED
+
+    // Yaw first, then pitch, then roll – so banking never skews the heading.
+    this.group.rotation.order = 'YXZ'
+    this.build(ACCENTS[index % ACCENTS.length])
+    this.respawn(true)
+  }
+
+  public update(delta: number): void {
+    const dt = clamp(delta, 0, MAX_DELTA)
+    this.time += dt
+
+    // Gentle weaving: the ship turns slowly and leans into the turn.
+    const turn = Math.sin(this.time * 0.45 + this.phase) * 0.12 // rad / s
+    this.heading += turn * dt
+    this.bank = damp(this.bank, -turn * 4, 3, dt)
+
+    const climb = Math.sin(this.time * 0.3 + this.phase * 1.3) * 4
+    this.velocity.set(Math.sin(this.heading) * this.speed, climb, Math.cos(this.heading) * this.speed)
+
+    const pos = this.group.position
+    pos.addScaledVector(this.velocity, dt)
+    pos.y = clamp(pos.y, MIN_ALTITUDE, this.altitude[1] + 40)
+
+    this.applyOrientation()
+
+    const limit = this.bounds + 30
+    if (Math.abs(pos.x) > limit || Math.abs(pos.z) > limit) this.respawn()
+  }
+
+  public dispose(): void {
+    disposeObject(this.group)
+  }
+
+  // ── Internals ───────────────────────────────────────────────
+
+  private applyOrientation(): void {
+    this.group.rotation.y = this.heading
+    // Rotation about +X tilts the nose DOWN, so climbing needs a negative angle.
+    this.group.rotation.x = -Math.atan2(this.velocity.y, this.speed)
+    this.group.rotation.z = this.bank
+  }
+
+  /** Enter from a random edge, aimed at a point over the play area so ships actually cross it. */
+  private respawn(initial = false): void {
+    const rng = this.rng
+    const B = this.bounds
+    const along = (rng() * 2 - 1) * B
+    const y = this.altitude[0] + rng() * (this.altitude[1] - this.altitude[0])
+
+    let x: number
+    let z: number
+    switch (Math.floor(rng() * 4)) {
+      case 0:
+        x = -B
+        z = along
+        break
+      case 1:
+        x = B
+        z = along
+        break
+      case 2:
+        x = along
+        z = -B
+        break
+      default:
+        x = along
+        z = B
+    }
+
+    const targetX = (rng() * 2 - 1) * 200
+    const targetZ = (rng() * 2 - 1) * 200
+    this.heading = Math.atan2(targetX - x, targetZ - z)
+    this.speed = this.speedRange[0] + rng() * (this.speedRange[1] - this.speedRange[0])
+    this.phase = rng() * Math.PI * 2
+    this.time = 0
+    this.bank = 0
+    this.velocity.set(Math.sin(this.heading) * this.speed, 0, Math.cos(this.heading) * this.speed)
+
+    // On the very first spawn, scatter ships along their path so the sky isn't empty.
+    if (initial) {
+      const t = rng() * ((2 * B) / this.speed) * 0.8
+      x += this.velocity.x * t
+      z += this.velocity.z * t
+    }
+
+    this.group.position.set(x, y, z)
+    this.group.scale.setScalar(0.8 + rng() * 0.9)
+    this.applyOrientation()
+  }
+
+  private build(accentColor: number): void {
+    const res = getResources()
+    const accent = getAccent(accentColor)
+
+    this.group.add(new THREE.Mesh(res.body, res.bodyMat))
+
+    const cockpit = new THREE.Mesh(res.cockpit, res.cockpitMat)
     cockpit.position.set(0, 0.05, 0.5)
     this.group.add(cockpit)
 
-    // Wings
-    const wingGeo = new THREE.BoxGeometry(1.5, 0.05, 0.6)
-    const wingMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2a3e,
-      metalness: 0.8,
-      roughness: 0.3
-    })
-    const wings = new THREE.Mesh(wingGeo, wingMat)
+    const wings = new THREE.Mesh(res.wing, res.wingMat)
     wings.position.set(0, 0, -0.2)
     this.group.add(wings)
 
-    // Engine glow
-    const engineGeo = new THREE.CylinderGeometry(0.15, 0.25, 0.3, 8)
-    const engineMat = new THREE.MeshStandardMaterial({
-      color: 0xff4400,
-      emissive: 0xff4400,
-      emissiveIntensity: 2
-    })
-    const engine = new THREE.Mesh(engineGeo, engineMat)
-    engine.rotation.x = Math.PI / 2
+    const engine = new THREE.Mesh(res.engine, res.engineMat)
     engine.position.set(0, 0, -1.1)
     this.group.add(engine)
 
-    // Engine light
-    const engineLight = new THREE.PointLight(0xff4400, 1, 5)
-    engineLight.position.set(0, 0, -1.3)
-    this.group.add(engineLight)
-
-    // Neon accent strip
-    const stripGeo = new THREE.BoxGeometry(0.02, 0.02, 1.8)
-    const stripMat = new THREE.MeshStandardMaterial({
-      color: 0x00ffff,
-      emissive: 0x00ffff,
-      emissiveIntensity: 3
-    })
-    const stripL = new THREE.Mesh(stripGeo, stripMat)
-    stripL.position.set(0.4, 0, 0)
-    this.group.add(stripL)
-
-    const stripR = stripL.clone()
-    stripR.position.set(-0.4, 0, 0)
-    this.group.add(stripR)
-  }
-
-  private resetPosition() {
-    // Random position high in the sky, entering from edges
-    const side = Math.floor(Math.random() * 4)
-    const speed = 80 + Math.random() * 60
-
-    switch (side) {
-      case 0: // From left
-        this.group.position.set(-200, 50 + Math.random() * 80, (Math.random() - 0.5) * 300)
-        this.velocity.set(speed, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 20)
-        break
-      case 1: // From right
-        this.group.position.set(200, 50 + Math.random() * 80, (Math.random() - 0.5) * 300)
-        this.velocity.set(-speed, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 20)
-        break
-      case 2: // From top (distance)
-        this.group.position.set((Math.random() - 0.5) * 300, 130, (Math.random() - 0.5) * 300)
-        this.velocity.set((Math.random() - 0.5) * 30, -speed * 0.5, (Math.random() - 0.5) * 30)
-        break
-      case 3: // From bottom
-        this.group.position.set((Math.random() - 0.5) * 300, -20, (Math.random() - 0.5) * 300)
-        this.velocity.set((Math.random() - 0.5) * 30, speed * 0.5, (Math.random() - 0.5) * 30)
-        break
+    for (const x of [-0.4, 0.4]) {
+      const strip = new THREE.Mesh(res.strip, accent.strip)
+      strip.position.set(x, 0, 0)
+      this.group.add(strip)
     }
 
-    // Face direction of movement
-    this.group.lookAt(
-      this.group.position.x + this.velocity.x,
-      this.group.position.y + this.velocity.y,
-      this.group.position.z + this.velocity.z
-    )
-  }
+    // Exhaust plume + glow sprite replace the old per-ship PointLight.
+    const plume = new THREE.Mesh(res.exhaust, accent.exhaust)
+    plume.position.set(0, 0, -1.25 - 2)
+    this.group.add(plume)
 
-  public update(delta: number, bounds: number = 250) {
-    this.group.position.add(this.velocity.clone().multiplyScalar(delta))
-
-    // Subtle banking based on velocity
-    this.group.rotation.z = -this.velocity.x * 0.002
-    this.group.rotation.x = this.velocity.y * 0.001
-
-    // Reset if out of bounds
-    if (Math.abs(this.group.position.x) > bounds ||
-        Math.abs(this.group.position.y) > bounds ||
-        Math.abs(this.group.position.z) > bounds) {
-      this.resetPosition()
-    }
+    const glow = createGlowSprite(accentColor, 3, 0.85)
+    glow.position.set(0, 0, -1.3)
+    this.group.add(glow)
   }
 }
 
-export function createSpaceshipTraffic(scene: THREE.Scene, count: number = 4): Spaceship[] {
-  const ships: Spaceship[] = []
-  for (let i = 0; i < count; i++) {
-    const ship = new Spaceship()
-    scene.add(ship.group)
-    ships.push(ship)
+// ─────────────────────────────────────────────────────────────
+// Traffic
+// ─────────────────────────────────────────────────────────────
+
+/** A fleet that is updated and disposed as one unit. */
+export class SpaceshipTraffic {
+  public readonly group = new THREE.Group()
+  public readonly ships: Spaceship[] = []
+
+  constructor(scene?: THREE.Scene, count = 4, options: SpaceshipOptions = {}) {
+    for (let i = 0; i < count; i++) {
+      const ship = new Spaceship(options, i)
+      this.ships.push(ship)
+      this.group.add(ship.group)
+    }
+    scene?.add(this.group)
   }
-  return ships
+
+  public update(delta: number): void {
+    for (const ship of this.ships) ship.update(delta)
+  }
+
+  public dispose(): void {
+    disposeObject(this.group)
+    this.ships.length = 0
+  }
 }
+
+/** Legacy helper – prefer `new SpaceshipTraffic(scene, count)`. */
+export function createSpaceshipTraffic(
+  scene: THREE.Scene,
+  count = 4,
+  options: SpaceshipOptions = {}
+): Spaceship[] {
+  return new SpaceshipTraffic(scene, count, options).ships
+}
+

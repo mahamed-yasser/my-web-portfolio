@@ -6,6 +6,8 @@
  */
 
 import https from 'node:https'
+import fs from 'node:fs'
+import path from 'node:path'
 
 const USERNAME = 'mahamedwow1-afk'
 const DEFAULT_OUTPUT = 'src/data/github.json'
@@ -33,7 +35,7 @@ function fetchJson(url) {
 }
 
 async function main() {
-  const outputPath = process.argv[2] || DEFAULT_OUTPUT
+  const outputPath = path.resolve(process.argv[2] || DEFAULT_OUTPUT)
 
   console.log(`Fetching GitHub data for ${USERNAME}...`)
 
@@ -65,10 +67,9 @@ async function main() {
         .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     }
 
-    const fs = await import('node:fs')
-    fs.mkdirSync(new URL(outputPath).pathname.split('/').slice(0, -1).join('/') || '.', { recursive: true })
-    fs.writeFileSync(new URL(outputPath), JSON.stringify(profile, null, 2), 'utf-8')
-    console.log(`Written to ${outputPath}`)
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+    fs.writeFileSync(outputPath, JSON.stringify(profile, null, 2), 'utf-8')
+    console.log(`Written to ${path.relative(process.cwd(), outputPath)}`)
     console.log(`  Repos: ${profile.repos.length}`)
     console.log(`  Name: ${profile.name}`)
   } catch (err) {
@@ -79,3 +80,4 @@ async function main() {
 }
 
 main()
+

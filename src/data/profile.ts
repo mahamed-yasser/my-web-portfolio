@@ -7,6 +7,11 @@ export interface Profile {
   avatarUrl: string
   githubUrl: string
   email: string
+  whatsappNumber: string
+  whatsappUrl: string
+  telegramUsername: string
+  telegramUrl: string
+  linkedinUrl: string
   socials: SocialLink[]
   repos: Repo[]
   projects: PortfolioProject[]
@@ -35,8 +40,16 @@ export interface PortfolioProject {
   category: 'web' | 'automation' | 'tool' | 'experiment'
   description: string
   longDescription?: string
+  problem?: string
+  solution?: string
+  approach?: string
+  technicalImplementation?: string
+  responsibilities?: string[]
+  challenges?: string[]
+  results?: string[]
   techStack: string[]
   image?: string
+  screenshots?: string[]
   liveUrl?: string
   githubUrl: string
   featured?: boolean
@@ -72,9 +85,15 @@ export const profile: Profile = {
   avatarUrl: 'https://avatars.githubusercontent.com/u/225742058?v=4',
   githubUrl: 'https://github.com/mahamedwow1-afk',
   email: 'mahamedwow1@gmail.com',
+  whatsappNumber: '01118003625',
+  whatsappUrl: 'https://wa.me/201118003625',
+  telegramUsername: '@Mahamed_Yasser',
+  telegramUrl: 'https://t.me/Mahamed_Yasser',
+  linkedinUrl: 'https://www.linkedin.com/in/mahamed-yasser-00b43a392',
   socials: [
     { platform: 'github', url: 'https://github.com/mahamedwow1-afk', label: 'GitHub' },
-    { platform: 'email', url: 'mailto:mahamedwow1@gmail.com', label: 'Email' }
+    { platform: 'email', url: 'mailto:mahamedwow1@gmail.com', label: 'Email' },
+    { platform: 'linkedin', url: 'https://www.linkedin.com/in/mahamed-yasser-00b43a392', label: 'LinkedIn' }
   ],
   repos: [
     {
@@ -172,3 +191,4 @@ export const profile: Profile = {
     }
   ]
 }
+
