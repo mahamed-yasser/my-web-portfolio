@@ -3,7 +3,7 @@
 ## Project Overview
 **Name**: My Web Portfolio (working title)
 **User**: Mahamed Yasser — Python Developer & Video Editor
-**GitHub**: https://github.com/mahamedwow1-afk
+**GitHub**: https://github.com/mahamed-yasser
 **Location**: Qalyubia, Egypt
 **Style**: Drivable 3D world, original content, inspired by bruno-simon.com concept
 
@@ -76,8 +76,8 @@ D:/Project/My Web/
 ## Data Sources
 | Source | Method | Fallback |
 |--------|--------|----------|
-| GitHub Profile | REST API (`/users/mahamedwow1-afk`) | Hardcoded fallback in `src/data/profile.ts` |
-| GitHub Repos | REST API (`/users/mahamedwow1-afk/repos`) | Same fallback |
+| GitHub Profile | REST API (`/users/mahamed-yasser`) | Hardcoded fallback in `src/data/profile.ts` |
+| GitHub Repos | REST API (`/users/mahamed-yasser/repos`) | Same fallback |
 | LinkedIn | Manual JSON (`data/profile.manual.json`) | Hardcoded fallback |
 | Personal Info | Filled into `src/data/profile.ts` | Already populated from GitHub |
 
@@ -86,8 +86,8 @@ D:/Project/My Web/
 - **Title**: Python Developer & Video Editor
 - **Bio**: "Python Developer & Video Editor | Passionate about building automation tools and creating visual stories."
 - **Location**: Qalyubia, Egypt
-- **GitHub**: https://github.com/mahamedwow1-afk
-- **Public Repos**: 5 (mahamedwow1-afk, media-organizer-pro, platform, my-first-app, Smart-File-Organizer)
+- **GitHub**: https://github.com/mahamed-yasser
+- **Public Repos**: 5 (mahamed-yasser, media-organizer-pro, platform, my-first-app, Smart-File-Organizer)
 - **Email**: To be provided (GitHub API doesn't expose without `user` scope)
 - **LinkedIn**: To be provided
 
