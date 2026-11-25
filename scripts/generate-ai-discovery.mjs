@@ -33,7 +33,7 @@ try {
   }).join('\n          ')
   const publicSkillGroups = [
     ['skills_languages', 'Languages', ['Python', 'JavaScript (ES6+)', 'HTML5/CSS3', 'Bash/Shell', 'TypeScript']],
-    ['skills_frameworks', 'Frameworks & Libraries', ['React', 'Node.js', 'Flask', 'FastAPI', 'Three.js / WebGL', 'Telethon']],
+    ['skills_frameworks', 'Frameworks & Libraries', ['React (Learning)', 'Node.js (Basic)', 'Flask (Basic)', 'FastAPI', 'Three.js / WebGL', 'Telethon']],
     ['skills_ai_automation', 'AI & Automation', ['n8n', 'Local LLMs / LM Studio', 'ComfyUI', 'AI Agents & Agentic Workflows']],
     ['skills_tools', 'Tools & Platforms', ['Git & GitHub', 'FFmpeg', 'Docker', 'VS Code', 'Adobe Premiere Pro', 'DaVinci Resolve', 'Cloudflare Pages', 'Vercel']],
     ['skills_soft', 'Soft Skills', ['Problem Solving', 'Self-Learning', 'Attention to Detail', 'Creative Thinking', 'AI-Assisted Development', 'Prompt Engineering']]
@@ -198,4 +198,3 @@ ${educationMarkdown}
 } finally {
   await vite.close()
 }
-
