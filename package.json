@@ -8,7 +8,7 @@
     "build": "tsc && vite build && node scripts/generate-localized-pages.mjs",
     "preview": "vite preview",
     "fetch-data": "node scripts/fetch-github.mjs",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler pages deploy dist",
     "prebuild": "node scripts/generate-ai-discovery.mjs"
   },
   "devDependencies": {
@@ -30,4 +30,3 @@
     "node": ">=18"
   }
 }
-
