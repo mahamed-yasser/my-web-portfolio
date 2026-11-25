@@ -80,7 +80,7 @@ export interface EducationEntry {
 export const profile: Profile = {
   name: 'Mahamed Yasser',
   title: 'Full-Stack Web & Python Developer',
-  bio: 'Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production.',
+  bio: 'Self-taught developer building websites, web applications, Python tools, and interactive 3D experiences.',
   location: 'Qalyubia, Egypt',
   avatarUrl: 'https://avatars.githubusercontent.com/u/225742058?v=4',
   githubUrl: 'https://github.com/mahamed-yasser',
