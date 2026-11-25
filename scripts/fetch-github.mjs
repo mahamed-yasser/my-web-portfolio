@@ -9,7 +9,7 @@ import https from 'node:https'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const USERNAME = 'mahamedwow1-afk'
+const USERNAME = 'mahamed-yasser'
 const DEFAULT_OUTPUT = 'src/data/github.json'
 
 function fetchJson(url) {
@@ -80,4 +80,3 @@ async function main() {
 }
 
 main()
-
