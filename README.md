@@ -91,5 +91,5 @@ npm run preview
 
 ## 📄 License
 
-Private portfolio project; not open source.
+All rights reserved. Source visible for review; reuse or redistribution requires permission.
 
