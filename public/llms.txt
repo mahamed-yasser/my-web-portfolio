@@ -23,28 +23,28 @@
 - Description: Full-featured educational portal with student dashboards, interactive exams, and admin analytics
 - Details: A comprehensive learning management system featuring real-time course tracking, interactive examination modules, student progress analytics, and an intuitive admin dashboard for content management.
 - Technologies: JavaScript, HTML5, CSS3, REST API, LocalStorage
-- Repository: https://github.com/mahamedwow1-afk/platform
+- Repository: https://github.com/mahamed-yasser/platform
 
 ### Media Organizer Pro
 - Type: automation
 - Description: Advanced media management using FFmpeg automation and machine learning
 - Details: Professional-grade media organization tool leveraging FFmpeg for video/audio processing, ML-based content classification, automated metadata extraction, and intelligent file categorization.
 - Technologies: Python, FFmpeg, Machine Learning, OpenCV, PyQt
-- Repository: https://github.com/mahamedwow1-afk/media-organizer-pro
+- Repository: https://github.com/mahamed-yasser/media-organizer-pro
 
 ### Smart File Organizer
 - Type: tool
 - Description: GUI desktop application for automatic file organization and categorization
 - Details: Cross-platform desktop application with drag-and-drop interface, custom folder rules, batch processing, and real-time preview. Features intelligent file type detection and automatic naming conventions.
 - Technologies: Python, Tkinter, OS Module, Shutil
-- Repository: https://github.com/mahamedwow1-afk/Smart-File-Organizer
+- Repository: https://github.com/mahamed-yasser/Smart-File-Organizer
 
 ### Task & Notes App
 - Type: web
 - Description: Responsive task manager with real-time search and persistent storage
 - Details: Modern web application featuring real-time task filtering, category management, statistics dashboard, dark/light theme support, and local storage persistence for offline access.
 - Technologies: JavaScript, CSS Grid, Flexbox, LocalStorage
-- Repository: https://github.com/mahamedwow1-afk/my-first-app
+- Repository: https://github.com/mahamed-yasser/my-first-app
 
 ## Experience
 - Self-Taught Developer & Automation Engineer, Freelance / Personal Projects (2024 - Present): Building automation tools, web applications, and media processing systems through dedicated self-study and practical projects.
@@ -59,7 +59,7 @@
 - The portfolio supports English and Arabic, including a right-to-left Arabic layout.
 
 ## Contact
-- GitHub: https://github.com/mahamedwow1-afk
+- GitHub: https://github.com/mahamed-yasser
 - Email: mahamedwow1@gmail.com
 - Telegram: https://t.me/Mahamed_Yasser
 - WhatsApp: https://wa.me/201118003625
