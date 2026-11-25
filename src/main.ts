@@ -94,7 +94,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 const soundEffects = new SoundEffects()
 const displayedSkillGroups = (): Array<[string, string[]]> => [
   ['skills_languages', ['Python', 'JavaScript (ES6+)', 'HTML5/CSS3', 'Bash/Shell', 'TypeScript']],
-  ['skills_frameworks', ['React', 'Node.js', 'Flask', 'FastAPI', 'Three.js / WebGL', 'Telethon']],
+  ['skills_frameworks', ['React (Learning)', 'Node.js (Basic)', 'Flask (Basic)', 'FastAPI', 'Three.js / WebGL', 'Telethon']],
   ['skills_ai_automation', ['n8n', 'Local LLMs / LM Studio', 'ComfyUI', 'AI Agents & Agentic Workflows']],
   ['skills_tools', ['Git & GitHub', 'FFmpeg', 'Docker', 'VS Code', 'Adobe Premiere Pro', 'DaVinci Resolve', 'Cloudflare Pages', 'Vercel']],
   ['skills_soft', ['skills_soft_item_0', 'skills_soft_item_1', 'skills_soft_item_2', 'skills_soft_item_3', 'skills_soft_item_4', 'skills_soft_item_5'].map(key => t(key as any))]
