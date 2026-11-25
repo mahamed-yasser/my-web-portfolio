@@ -67,8 +67,8 @@ On mobile, use the on-screen joystick and touch controls.
 Requires Node.js 18 or newer.
 
 ```bash
-git clone https://github.com/mahamed-yasser/3d-portfolio.git
-cd 3d-portfolio
+git clone https://github.com/mahamed-yasser/my-web-portfolio.git
+cd my-web-portfolio
 npm install
 npm run dev
 ```
@@ -92,5 +92,4 @@ npm run preview
 ## 📄 License
 
 Private portfolio project; not open source.
-
 
