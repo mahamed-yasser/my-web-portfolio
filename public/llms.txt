@@ -8,11 +8,11 @@
 - Portfolio: https://mahamed-yasser-3d.pages.dev/
 - Arabic portfolio: https://mahamed-yasser-3d.pages.dev/ar/
 - Location: Qalyubia, Egypt
-- Introduction: Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production. The portfolio is an interactive Three.js world with project stations and a classic portfolio view.
+- Introduction: Self-taught developer building websites, web applications, Python tools, and interactive 3D experiences. The portfolio is an interactive Three.js world with project stations and a classic portfolio view.
 
 ## Skills
 - Languages: Python, JavaScript (ES6+), HTML5/CSS3, Bash/Shell, TypeScript.
-- Frameworks & Libraries: React, Node.js, Flask, FastAPI, Three.js / WebGL, Telethon.
+- Frameworks & Libraries: React (Learning), Node.js (Basic), Flask (Basic), FastAPI, Three.js / WebGL, Telethon.
 - AI & Automation: n8n, Local LLMs / LM Studio, ComfyUI, AI Agents & Agentic Workflows.
 - Tools & Platforms: Git & GitHub, FFmpeg, Docker, VS Code, Adobe Premiere Pro, DaVinci Resolve, Cloudflare Pages, Vercel.
 - Soft Skills: Problem Solving, Self-Learning, Attention to Detail, Creative Thinking, AI-Assisted Development, Prompt Engineering.
