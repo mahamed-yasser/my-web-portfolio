@@ -9,7 +9,7 @@
     "location": "Qalyubia, Egypt",
     "introduction": "Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production.",
     "portfolio": "https://mahamed-yasser-3d.pages.dev/",
-    "github": "https://github.com/mahamedwow1-afk",
+    "github": "https://github.com/mahamed-yasser",
     "experience": [
       {
         "role": "Self-Taught Developer & Automation Engineer",
@@ -159,7 +159,7 @@
         "REST API",
         "LocalStorage"
       ],
-      "repository": "https://github.com/mahamedwow1-afk/platform",
+      "repository": "https://github.com/mahamed-yasser/platform",
       "featured": true
     },
     {
@@ -174,7 +174,7 @@
         "OpenCV",
         "PyQt"
       ],
-      "repository": "https://github.com/mahamedwow1-afk/media-organizer-pro",
+      "repository": "https://github.com/mahamed-yasser/media-organizer-pro",
       "featured": true
     },
     {
@@ -188,7 +188,7 @@
         "OS Module",
         "Shutil"
       ],
-      "repository": "https://github.com/mahamedwow1-afk/Smart-File-Organizer",
+      "repository": "https://github.com/mahamed-yasser/Smart-File-Organizer",
       "featured": true
     },
     {
@@ -202,19 +202,19 @@
         "Flexbox",
         "LocalStorage"
       ],
-      "repository": "https://github.com/mahamedwow1-afk/my-first-app",
+      "repository": "https://github.com/mahamed-yasser/my-first-app",
       "featured": false
     }
   ],
   "contact": {
     "email": "mailto:mahamedwow1@gmail.com",
-    "github": "https://github.com/mahamedwow1-afk",
+    "github": "https://github.com/mahamed-yasser",
     "telegram": "https://t.me/Mahamed_Yasser",
     "whatsapp": "https://wa.me/201118003625",
     "socialLinks": [
       {
         "platform": "github",
-        "url": "https://github.com/mahamedwow1-afk",
+        "url": "https://github.com/mahamed-yasser",
         "label": "GitHub"
       },
       {
