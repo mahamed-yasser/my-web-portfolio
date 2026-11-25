@@ -83,7 +83,7 @@ export const profile: Profile = {
   bio: 'Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production.',
   location: 'Qalyubia, Egypt',
   avatarUrl: 'https://avatars.githubusercontent.com/u/225742058?v=4',
-  githubUrl: 'https://github.com/mahamedwow1-afk',
+  githubUrl: 'https://github.com/mahamed-yasser',
   email: 'mahamedwow1@gmail.com',
   whatsappNumber: '01118003625',
   whatsappUrl: 'https://wa.me/201118003625',
@@ -91,7 +91,7 @@ export const profile: Profile = {
   telegramUrl: 'https://t.me/Mahamed_Yasser',
   linkedinUrl: 'https://www.linkedin.com/in/mahamed-yasser-00b43a392',
   socials: [
-    { platform: 'github', url: 'https://github.com/mahamedwow1-afk', label: 'GitHub' },
+    { platform: 'github', url: 'https://github.com/mahamed-yasser', label: 'GitHub' },
     { platform: 'email', url: 'mailto:mahamedwow1@gmail.com', label: 'Email' },
     { platform: 'linkedin', url: 'https://www.linkedin.com/in/mahamed-yasser-00b43a392', label: 'LinkedIn' }
   ],
@@ -99,7 +99,7 @@ export const profile: Profile = {
     {
       name: 'media-organizer-pro',
       description: 'Professional Python automation tool for organizing video, image, and audio files using FFmpeg and ML',
-      htmlUrl: 'https://github.com/mahamedwow1-afk/media-organizer-pro',
+      htmlUrl: 'https://github.com/mahamed-yasser/media-organizer-pro',
       language: 'Python',
       stars: 1,
       updatedAt: '2026-10-20'
@@ -107,7 +107,7 @@ export const profile: Profile = {
     {
       name: 'platform',
       description: 'Interactive educational platform with course management, exams, forums, and real-time statistics dashboard',
-      htmlUrl: 'https://github.com/mahamedwow1-afk/platform',
+      htmlUrl: 'https://github.com/mahamed-yasser/platform',
       language: 'JavaScript',
       stars: 1,
       updatedAt: '2026-10-20'
@@ -115,7 +115,7 @@ export const profile: Profile = {
     {
       name: 'Smart-File-Organizer',
       description: 'Professional Python GUI application to organize files into categorized folders automatically',
-      htmlUrl: 'https://github.com/mahamedwow1-afk/Smart-File-Organizer',
+      htmlUrl: 'https://github.com/mahamed-yasser/Smart-File-Organizer',
       language: 'Python',
       stars: 1,
       updatedAt: '2026-10-20'
@@ -123,7 +123,7 @@ export const profile: Profile = {
     {
       name: 'my-first-app',
       description: 'Task management and notes web application with persistent local storage',
-      htmlUrl: 'https://github.com/mahamedwow1-afk/my-first-app',
+      htmlUrl: 'https://github.com/mahamed-yasser/my-first-app',
       language: 'CSS / JS',
       stars: 1,
       updatedAt: '2026-10-20'
@@ -136,7 +136,7 @@ export const profile: Profile = {
       description: 'Full-featured educational portal with student dashboards, interactive exams, and admin analytics',
       longDescription: 'A comprehensive learning management system featuring real-time course tracking, interactive examination modules, student progress analytics, and an intuitive admin dashboard for content management.',
       techStack: ['JavaScript', 'HTML5', 'CSS3', 'REST API', 'LocalStorage'],
-      githubUrl: 'https://github.com/mahamedwow1-afk/platform',
+      githubUrl: 'https://github.com/mahamed-yasser/platform',
       featured: true
     },
     {
@@ -145,7 +145,7 @@ export const profile: Profile = {
       description: 'Advanced media management using FFmpeg automation and machine learning',
       longDescription: 'Professional-grade media organization tool leveraging FFmpeg for video/audio processing, ML-based content classification, automated metadata extraction, and intelligent file categorization.',
       techStack: ['Python', 'FFmpeg', 'Machine Learning', 'OpenCV', 'PyQt'],
-      githubUrl: 'https://github.com/mahamedwow1-afk/media-organizer-pro',
+      githubUrl: 'https://github.com/mahamed-yasser/media-organizer-pro',
       featured: true
     },
     {
@@ -154,7 +154,7 @@ export const profile: Profile = {
       description: 'GUI desktop application for automatic file organization and categorization',
       longDescription: 'Cross-platform desktop application with drag-and-drop interface, custom folder rules, batch processing, and real-time preview. Features intelligent file type detection and automatic naming conventions.',
       techStack: ['Python', 'Tkinter', 'OS Module', 'Shutil'],
-      githubUrl: 'https://github.com/mahamedwow1-afk/Smart-File-Organizer',
+      githubUrl: 'https://github.com/mahamed-yasser/Smart-File-Organizer',
       featured: true
     },
     {
@@ -163,7 +163,7 @@ export const profile: Profile = {
       description: 'Responsive task manager with real-time search and persistent storage',
       longDescription: 'Modern web application featuring real-time task filtering, category management, statistics dashboard, dark/light theme support, and local storage persistence for offline access.',
       techStack: ['JavaScript', 'CSS Grid', 'Flexbox', 'LocalStorage'],
-      githubUrl: 'https://github.com/mahamedwow1-afk/my-first-app',
+      githubUrl: 'https://github.com/mahamed-yasser/my-first-app',
       featured: false
     }
   ],
@@ -191,4 +191,3 @@ export const profile: Profile = {
     }
   ]
 }
-
