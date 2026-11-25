@@ -7,7 +7,7 @@
     "name": "Mahamed Yasser",
     "professionalTitle": "Full-Stack Web & Python Developer",
     "location": "Qalyubia, Egypt",
-    "introduction": "Professional web developer and automation engineer specializing in modern web applications, Python automation tools, and digital media production.",
+    "introduction": "Self-taught developer building websites, web applications, Python tools, and interactive 3D experiences.",
     "portfolio": "https://mahamed-yasser-3d.pages.dev/",
     "github": "https://github.com/mahamed-yasser",
     "experience": [
@@ -54,9 +54,9 @@
       "TypeScript"
     ],
     "frameworks": [
-      "React",
-      "Node.js",
-      "Flask",
+      "React (Learning)",
+      "Node.js (Basic)",
+      "Flask (Basic)",
       "FastAPI",
       "Three.js / WebGL",
       "Telethon"
