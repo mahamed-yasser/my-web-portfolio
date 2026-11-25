@@ -1,4 +1,3 @@
-mahamedwow1-afk
 *.pyc
 __pycache__/
 *.pyo
@@ -22,4 +21,3 @@ coverage/
 .pytest_cache/
 .mypy_cache/
 *.tsbuildinfo
-
